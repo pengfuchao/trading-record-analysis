@@ -11,6 +11,7 @@ from src.main.python.api.dependencies import (
     get_account_repo, get_db, get_parser, get_trade_repo, require_account,
 )
 from src.main.python.api.schemas.imports import (
+    ImportPreviewResponse, ImportPreviewRow,
     ImportResponse, SkippedRowInfo, ValidationErrorInfo,
 )
 from src.main.python.services.csv_parser import MTCSVParser
@@ -19,33 +20,16 @@ from src.main.python.services.trade_repository import TradeRepository
 router = APIRouter(prefix="/accounts", tags=["imports"])
 
 
-@router.post("/{account_id}/import", response_model=ImportResponse)
-async def import_csv(
-    account_id: str,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    parser: MTCSVParser = Depends(get_parser),
-):
-    account_repo = get_account_repo(db)
-    trade_repo = get_trade_repo(db)
-    account = require_account(account_id, account_repo)
-
-    import_run_id = str(uuid.uuid4())
-
-    # MTCSVParser requires a file path — write upload bytes to a temp file
-    content = await file.read()
+def _write_temp(content: bytes) -> str:
+    """Write bytes to a temp file and return the path. Caller must delete it."""
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".csv")
-    try:
-        os.write(tmp_fd, content)
-        os.close(tmp_fd)
-        trades = parser.parse(tmp_path, account)
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+    os.write(tmp_fd, content)
+    os.close(tmp_fd)
+    return tmp_path
 
-    count = trade_repo.save_batch(trades, import_run_id=import_run_id)
 
-    skipped = [
+def _skipped_list(parser: MTCSVParser):
+    return [
         SkippedRowInfo(
             row_index=r.get("row_index", 0),
             trade_id=r.get("trade_id"),
@@ -53,7 +37,10 @@ async def import_csv(
         )
         for r in parser.skipped_rows
     ]
-    errors = [
+
+
+def _error_list(parser: MTCSVParser):
+    return [
         ValidationErrorInfo(
             trade_id=e.trade_id,
             field=e.field,
@@ -62,12 +49,113 @@ async def import_csv(
         for e in parser.validation_errors
     ]
 
+
+# ── Preview (parse without saving) ────────────────────────────────────────────
+
+@router.post("/{account_id}/import/preview", response_model=ImportPreviewResponse)
+async def preview_import(
+    account_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    parser: MTCSVParser = Depends(get_parser),
+):
+    """Parse a CSV and return a preview of what would be imported — no DB writes."""
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    account = require_account(account_id, account_repo)
+
+    content = await file.read()
+    tmp_path = _write_temp(content)
+    try:
+        trades = parser.parse(tmp_path, account)
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    # Deduplication check against existing DB trades
+    incoming_ids = [t.trade_id for t in trades]
+    existing_ids = trade_repo.get_existing_trade_ids(account_id, incoming_ids)
+
+    preview_rows = [
+        ImportPreviewRow(
+            trade_id=t.trade_id,
+            symbol=t.symbol,
+            direction=t.direction.value if t.direction else None,
+            entry_datetime=t.entry_datetime.isoformat() if t.entry_datetime else None,
+            exit_datetime=t.exit_datetime.isoformat() if t.exit_datetime else None,
+            lot_size=t.lot_size,
+            gross_pnl=t.gross_pnl,
+            net_pnl=t.net_pnl,
+            result=t.result.value if t.result else None,
+            is_existing=(t.trade_id in existing_ids),
+        )
+        for t in trades[:20]
+    ]
+
+    new_count = sum(1 for tid in incoming_ids if tid not in existing_ids)
+    existing_count = len(existing_ids & set(incoming_ids))
+
+    return ImportPreviewResponse(
+        account_id=account_id,
+        detected_platform=parser.detected_platform or "unknown",
+        total_rows_in_file=parser.total_rows_in_file,
+        trade_rows_parsed=len(trades),
+        new_trade_count=new_count,
+        existing_trade_count=existing_count,
+        validation_error_count=len(parser.validation_errors),
+        preview_rows=preview_rows,
+        skipped_rows=_skipped_list(parser),
+        validation_errors=_error_list(parser),
+    )
+
+
+# ── Import (parse + save) ──────────────────────────────────────────────────────
+
+@router.post("/{account_id}/import", response_model=ImportResponse)
+async def import_csv(
+    account_id: str,
+    file: UploadFile = File(...),
+    duplicate_strategy: str = "skip",
+    db: Session = Depends(get_db),
+    parser: MTCSVParser = Depends(get_parser),
+):
+    """
+    Import a MT4/MT5 CSV into the trade log.
+
+    duplicate_strategy:
+      skip          — skip trades whose trade_id already exists in DB (default, safest)
+      update_broker — update broker-sourced fields for existing trades;
+                      manual enrichment (setup tags, lessons, etc.) is preserved
+    """
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    account = require_account(account_id, account_repo)
+
+    import_run_id = str(uuid.uuid4())
+
+    content = await file.read()
+    tmp_path = _write_temp(content)
+    try:
+        trades = parser.parse(tmp_path, account)
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    counts = trade_repo.save_batch_import(
+        trades,
+        import_run_id=import_run_id,
+        duplicate_strategy=duplicate_strategy,
+    )
+
     return ImportResponse(
         account_id=account_id,
         import_run_id=import_run_id,
-        trades_imported=count,
-        trades_skipped=len(parser.skipped_rows),
-        validation_error_count=len(errors),
-        skipped_rows=skipped,
-        validation_errors=errors,
+        trades_imported=counts.new + counts.updated,
+        trades_new=counts.new,
+        trades_updated=counts.updated,
+        trades_skipped=counts.skipped,
+        duplicate_strategy=duplicate_strategy,
+        validation_error_count=len(parser.validation_errors),
+        skipped_rows=_skipped_list(parser),
+        validation_errors=_error_list(parser),
     )

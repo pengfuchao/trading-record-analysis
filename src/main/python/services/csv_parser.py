@@ -86,10 +86,14 @@ class MTCSVParser:
 
         self.skipped_rows: list = []
         self.validation_errors: List[ValidationError] = []
+        self.detected_platform: str = ""    # set during parse(); "MT4" or "MT5"
+        self.total_rows_in_file: int = 0    # row count before type filtering
 
     def parse(self, file_path: str, account: Account) -> List[Trade]:
         self.skipped_rows = []
         self.validation_errors = []
+        self.detected_platform = ""
+        self.total_rows_in_file = 0
 
         logger.info("Parsing file: %s", file_path)
 
@@ -105,8 +109,10 @@ class MTCSVParser:
             raise
 
         logger.info("Loaded %d rows from CSV", len(df))
+        self.total_rows_in_file = len(df)
 
         platform = self._detect_platform(df, account)
+        self.detected_platform = platform.value
         logger.info("Detected platform: %s", platform.value)
 
         df = self._filter_trade_rows(df)
