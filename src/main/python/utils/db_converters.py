@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from src.main.python.models.account import Account
-from src.main.python.models.db_models import AccountModel, TradeModel
+from src.main.python.models.db_models import AccountModel, SetupDefinitionModel, TradeModel
+from src.main.python.models.setup import SetupDefinition
 from src.main.python.models.enums import (
     AssetClass, ChallengePhase, Direction, Platform, TradeResult,
 )
@@ -171,4 +172,46 @@ def orm_to_account(orm: AccountModel) -> Account:
         starting_balance=orm.starting_balance,
         account_currency=orm.account_currency,
         created_at=orm.created_at,
+    )
+
+
+def setup_to_orm(setup: SetupDefinition) -> SetupDefinitionModel:
+    return SetupDefinitionModel(
+        setup_id=setup.setup_id,
+        name=setup.name,
+        strategy_group=setup.strategy_group,
+        description=setup.description,
+        market_environment=setup.market_environment,
+        preconditions=setup.preconditions,
+        entry_criteria=setup.entry_criteria,
+        confirmation_rules=setup.confirmation_rules,
+        stop_loss_rules=setup.stop_loss_rules,
+        take_profit_rules=setup.take_profit_rules,
+        invalidation_conditions=setup.invalidation_conditions,
+        common_mistakes=setup.common_mistakes,
+        screenshot_examples=setup.screenshot_examples if setup.screenshot_examples else None,
+        notes=setup.notes,
+        created_at=setup.created_at,
+        updated_at=setup.updated_at,
+    )
+
+
+def orm_to_setup(orm: SetupDefinitionModel) -> SetupDefinition:
+    return SetupDefinition(
+        setup_id=orm.setup_id,
+        name=orm.name,
+        strategy_group=orm.strategy_group,
+        description=orm.description,
+        market_environment=orm.market_environment,
+        preconditions=orm.preconditions,
+        entry_criteria=orm.entry_criteria,
+        confirmation_rules=orm.confirmation_rules,
+        stop_loss_rules=orm.stop_loss_rules,
+        take_profit_rules=orm.take_profit_rules,
+        invalidation_conditions=orm.invalidation_conditions,
+        common_mistakes=orm.common_mistakes,
+        screenshot_examples=list(orm.screenshot_examples) if orm.screenshot_examples else [],
+        notes=orm.notes,
+        created_at=orm.created_at,
+        updated_at=orm.updated_at,
     )

@@ -143,3 +143,30 @@ class TradeModel(Base):
         Index("ix_trades_account_result", "account_id", "result"),
         Index("ix_trades_account_symbol", "account_id", "symbol"),
     )
+
+
+class SetupDefinitionModel(Base):
+    __tablename__ = "setup_definitions"
+
+    setup_id:               Mapped[str]            = mapped_column(String(100), primary_key=True)
+    name:                   Mapped[str]            = mapped_column(String(200), nullable=False)
+    strategy_group:         Mapped[Optional[str]]  = mapped_column(String(100), nullable=True, index=True)
+    description:            Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
+    market_environment:     Mapped[Optional[str]]  = mapped_column(String(100), nullable=True)
+    preconditions:          Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
+    entry_criteria:         Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
+    confirmation_rules:     Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
+    stop_loss_rules:        Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
+    take_profit_rules:      Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
+    invalidation_conditions:Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
+    common_mistakes:        Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
+    # ARRAY(String) is PostgreSQL-specific; test fixtures patch this to JSON for SQLite
+    screenshot_examples:    Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    notes:                  Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
+    created_at:             Mapped[datetime]       = mapped_column(
+        DateTime(timezone=False), nullable=False, server_default=func.now()
+    )
+    updated_at:             Mapped[datetime]       = mapped_column(
+        DateTime(timezone=False), nullable=False,
+        server_default=func.now(), onupdate=func.now(),
+    )
