@@ -8,7 +8,6 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision: str = "002"
 down_revision: Union[str, None] = "001"
@@ -31,7 +30,7 @@ def upgrade() -> None:
         sa.Column("take_profit_rules",      sa.Text(),      nullable=True),
         sa.Column("invalidation_conditions",sa.Text(),      nullable=True),
         sa.Column("common_mistakes",        sa.Text(),      nullable=True),
-        sa.Column("screenshot_examples",    postgresql.ARRAY(sa.String()), nullable=True),
+        sa.Column("screenshot_examples",    sa.JSON(),                     nullable=True),
         sa.Column("notes",                  sa.Text(),      nullable=True),
         sa.Column("created_at",             sa.DateTime(),  nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at",             sa.DateTime(),  nullable=False, server_default=sa.func.now()),

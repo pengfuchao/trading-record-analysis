@@ -7,8 +7,9 @@ from sqlalchemy import (
     Boolean, DateTime, Float, ForeignKey, Index,
     Integer, Interval, String, Text, func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from src.main.python.utils.types import StringList
 
 
 class Base(DeclarativeBase):
@@ -114,8 +115,7 @@ class TradeModel(Base):
     # ── Review / reflection ──────────────────────────────────────────────────
     trade_quality:    Mapped[Optional[str]]        = mapped_column(String(50), nullable=True)
     problem_source:   Mapped[Optional[str]]        = mapped_column(String(50), nullable=True)
-    # ARRAY(String) is PostgreSQL-specific; test fixtures patch this to JSON for SQLite
-    mistake_tags:     Mapped[Optional[List[str]]]  = mapped_column(ARRAY(String), nullable=True)
+    mistake_tags:     Mapped[Optional[List[str]]]  = mapped_column(StringList(), nullable=True)
     lesson_learned:   Mapped[Optional[str]]        = mapped_column(Text, nullable=True)
     repeat_next_time: Mapped[Optional[str]]        = mapped_column(Text, nullable=True)
     avoid_next_time:  Mapped[Optional[str]]        = mapped_column(Text, nullable=True)
@@ -160,8 +160,7 @@ class SetupDefinitionModel(Base):
     take_profit_rules:      Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
     invalidation_conditions:Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
     common_mistakes:        Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
-    # ARRAY(String) is PostgreSQL-specific; test fixtures patch this to JSON for SQLite
-    screenshot_examples:    Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    screenshot_examples:    Mapped[Optional[List[str]]] = mapped_column(StringList(), nullable=True)
     notes:                  Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
     created_at:             Mapped[datetime]       = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()

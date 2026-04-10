@@ -1,18 +1,17 @@
 """
 Integration tests for TradeRepository and AccountRepository using SQLite in-memory.
 
-ARRAY(String) is PostgreSQL-only, so we patch the mistake_tags column type to JSON
-before calling Base.metadata.create_all(). This lets us test all repository logic
-without a real PostgreSQL instance.
+StringList TypeDecorator stores list-of-strings as JSON text, so no patching
+is needed — the same models work on both SQLite and PostgreSQL.
 """
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import JSON, create_engine
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.main.python.models.account import Account
-from src.main.python.models.db_models import Base, TradeModel
+from src.main.python.models.db_models import Base
 from src.main.python.models.enums import (
     AssetClass, ChallengePhase, Direction, Platform, TradeResult,
 )
@@ -25,13 +24,8 @@ from src.main.python.services.trade_repository import TradeRepository
 
 @pytest.fixture(scope="session")
 def engine():
-    """
-    One SQLite in-memory engine for the whole test session.
-    Patch mistake_tags column to JSON before creating tables (ARRAY not supported in SQLite).
-    """
+    """One SQLite in-memory engine for the whole test session."""
     eng = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    # Patch PostgreSQL ARRAY column to JSON for SQLite compatibility
-    TradeModel.__table__.c["mistake_tags"].type = JSON()
     Base.metadata.create_all(eng)
     return eng
 
