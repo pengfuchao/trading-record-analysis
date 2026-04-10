@@ -1,0 +1,57 @@
+# MT4/MT5 column name mappings to canonical internal field names.
+# For MT5, "entry_datetime" and "exit_datetime" both map to the column named "Time",
+# and "entry_price" / "exit_price" both map to "Price". The parser resolves these
+# by positional index (first vs second occurrence) rather than column name alone.
+
+platforms:
+  mt5:
+    trade_id: "Position"
+    entry_datetime: "Time"        # first "Time" column (open time)
+    exit_datetime: "Time"         # second "Time" column (close time) — resolved by index
+    symbol: "Symbol"
+    trade_type: "Type"
+    volume: "Volume"
+    entry_price: "Price"          # first "Price" column (open price)
+    stop_loss: "S / L"
+    take_profit: "T / P"
+    exit_price: "Price"           # second "Price" column (close price) — resolved by index
+    commission: "Commission"
+    swap: "Swap"
+    gross_pnl: "Profit"
+    magic: "Magic"
+    comment: "Comment"
+  mt4:
+    trade_id: "Ticket"
+    entry_datetime: "Open Time"
+    exit_datetime: "Close Time"
+    symbol: "Symbol"
+    trade_type: "Type"
+    volume: "Lots"
+    entry_price: "Open Price"
+    stop_loss: "S/L"
+    take_profit: "T/P"
+    exit_price: "Close Price"
+    commission: "Commission"
+    swap: "Swap"
+    gross_pnl: "Profit"
+    comment: "Comment"
+
+# Asset class detection: patterns are tested in order, first match wins.
+# Broker suffixes (e.g. ".pro", "_SB") are stripped before matching.
+asset_class_rules:
+  forex:
+    - "^(EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY|SGD|HKD|NOK|SEK|DKK|MXN|ZAR|TRY){2}.*"
+    - "^[A-Z]{6}$"
+  gold:
+    - "^XAU.*"
+    - "^GOLD.*"
+  silver:
+    - "^XAG.*"
+    - "^SILVER.*"
+  oil:
+    - "^(USOIL|BRENT|WTI|CRUDEOIL|OIL).*"
+  indices:
+    - "^(US30|NAS100|SPX500|DAX|FTSE|UK100|GER40|JP225|AUS200|CAC40|HK50).*"
+    - "^(DJ30|USTEC|US500|WALL|STOXX).*"
+  crypto:
+    - "^(BTC|ETH|XRP|LTC|ADA|SOL|BNB|DOT).*"

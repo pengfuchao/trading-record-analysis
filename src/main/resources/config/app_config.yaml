@@ -1,0 +1,20 @@
+paths:
+  input_dir: "input/"
+  output_dir: "output/"
+  log_file: "output/import.log"
+  mt_column_map: "src/main/resources/config/mt_column_map.yaml"
+
+logging:
+  level: "INFO"
+
+output:
+  formats:
+    - "json"
+    - "csv"
+  timestamp_format: "%Y%m%d_%H%M%S"
+  json_indent: 2
+
+import:
+  skip_invalid_rows: true
+  encoding: "utf-8"
+  decimal: "."
