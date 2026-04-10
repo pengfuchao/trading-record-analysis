@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 from sqlalchemy import (
-    Boolean, DateTime, Float, ForeignKey, Index,
-    Integer, Interval, String, Text, func,
+    Boolean, Date, DateTime, Float, ForeignKey, Index,
+    Integer, Interval, JSON, String, Text, func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -142,6 +142,87 @@ class TradeModel(Base):
         Index("ix_trades_account_exit",   "account_id", "exit_datetime"),
         Index("ix_trades_account_result", "account_id", "result"),
         Index("ix_trades_account_symbol", "account_id", "symbol"),
+    )
+
+
+class DailyPlanModel(Base):
+    __tablename__ = "daily_plans"
+
+    plan_id:            Mapped[str]            = mapped_column(String(100), primary_key=True)
+    account_id:         Mapped[str]            = mapped_column(
+        String(100), ForeignKey("accounts.account_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    trading_date:       Mapped[date]           = mapped_column(Date, nullable=False)
+
+    market_bias:        Mapped[Optional[str]]  = mapped_column(String(50),  nullable=True)
+    symbols_in_focus:   Mapped[Optional[list]] = mapped_column(JSON,        nullable=True)
+    key_levels:         Mapped[Optional[str]]  = mapped_column(Text,        nullable=True)
+    major_news:         Mapped[Optional[str]]  = mapped_column(Text,        nullable=True)
+    allowed_setups:     Mapped[Optional[list]] = mapped_column(JSON,        nullable=True)
+    disallowed_setups:  Mapped[Optional[list]] = mapped_column(JSON,        nullable=True)
+    daily_max_risk_pct: Mapped[Optional[float]]= mapped_column(Float,       nullable=True)
+    max_trades:         Mapped[Optional[int]]  = mapped_column(Integer,     nullable=True)
+    behavioral_focus:   Mapped[Optional[str]]  = mapped_column(Text,        nullable=True)
+    special_rule:       Mapped[Optional[str]]  = mapped_column(Text,        nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False,
+        server_default=func.now(), onupdate=func.now(),
+    )
+
+    reviews: Mapped[List["DailyReviewModel"]] = relationship(
+        "DailyReviewModel", back_populates="plan", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_daily_plans_account_date", "account_id", "trading_date", unique=True),
+    )
+
+
+class DailyReviewModel(Base):
+    __tablename__ = "daily_reviews"
+
+    review_id:          Mapped[str]             = mapped_column(String(100), primary_key=True)
+    account_id:         Mapped[str]             = mapped_column(
+        String(100), ForeignKey("accounts.account_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    trading_date:       Mapped[date]            = mapped_column(Date, nullable=False)
+    plan_id:            Mapped[Optional[str]]   = mapped_column(
+        String(100), ForeignKey("daily_plans.plan_id", ondelete="SET NULL"), nullable=True
+    )
+
+    total_trades:       Mapped[Optional[int]]   = mapped_column(Integer, nullable=True)
+    total_pnl:          Mapped[Optional[float]] = mapped_column(Float,   nullable=True)
+    total_r:            Mapped[Optional[float]] = mapped_column(Float,   nullable=True)
+    planned_trades:     Mapped[Optional[int]]   = mapped_column(Integer, nullable=True)
+    unplanned_trades:   Mapped[Optional[int]]   = mapped_column(Integer, nullable=True)
+
+    best_trade_id:      Mapped[Optional[str]]   = mapped_column(String(100), nullable=True)
+    worst_trade_id:     Mapped[Optional[str]]   = mapped_column(String(100), nullable=True)
+
+    biggest_mistake:    Mapped[Optional[str]]   = mapped_column(Text, nullable=True)
+    emotional_summary:  Mapped[Optional[str]]   = mapped_column(Text, nullable=True)
+    improvement_point:  Mapped[Optional[str]]   = mapped_column(Text, nullable=True)
+    notes:              Mapped[Optional[str]]   = mapped_column(Text, nullable=True)
+
+    process_success:    Mapped[Optional[bool]]  = mapped_column(Boolean, nullable=True)
+    pnl_success:        Mapped[Optional[bool]]  = mapped_column(Boolean, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False,
+        server_default=func.now(), onupdate=func.now(),
+    )
+
+    plan: Mapped[Optional["DailyPlanModel"]] = relationship("DailyPlanModel", back_populates="reviews")
+
+    __table_args__ = (
+        Index("ix_daily_reviews_account_date", "account_id", "trading_date", unique=True),
     )
 
 

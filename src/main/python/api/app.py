@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.main.python.api.routes import accounts, analytics, imports, mistakes, setups, trades
+from src.main.python.api.routes.daily_plans import plans_router, reviews_router
 
 
 def create_app() -> FastAPI:
@@ -32,6 +33,8 @@ def create_app() -> FastAPI:
     app.include_router(mistakes.router,           prefix="/api/v1")
     app.include_router(setups.setup_defs_router,  prefix="/api/v1")
     app.include_router(setups.setup_stats_router, prefix="/api/v1")
+    app.include_router(plans_router,              prefix="/api/v1")
+    app.include_router(reviews_router,            prefix="/api/v1")
 
     return app
 
