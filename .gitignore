@@ -36,10 +36,11 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Environment variables
+# Environment variables (secrets — never commit)
 .env
 .env.local
 .env.*.local
+# .env.example is committed as a template
 
 # Logs
 *.log
