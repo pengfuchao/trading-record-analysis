@@ -8,6 +8,7 @@ const nav = [
   { href: "/trades",     label: "Trade Log" },
   { href: "/setups",     label: "Setups" },
   { href: "/daily",      label: "Daily Plans" },
+  { href: "/coaching",   label: "AI Coach" },
   { href: "/import",     label: "Import" },
 ];
 

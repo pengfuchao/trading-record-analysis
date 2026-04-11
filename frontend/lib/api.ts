@@ -56,6 +56,17 @@ export const api = {
   importCsv: (accountId: string, file: File, duplicateStrategy: string) =>
     uploadFile<ImportResponse>(`/accounts/${accountId}/import`, file, { duplicate_strategy: duplicateStrategy }),
 
+  // Coaching
+  generateWeeklyReview: (accountId: string, params?: { from_date?: string; to_date?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.from_date) q.set("from_date", params.from_date);
+    if (params?.to_date) q.set("to_date", params.to_date);
+    return request<WeeklyReviewResponse>(
+      `/accounts/${accountId}/coaching/weekly-review?${q}`,
+      { method: "POST" }
+    );
+  },
+
   // Import — derived field recompute
   recomputeDerived: (
     accountId: string,
@@ -395,4 +406,19 @@ export interface RecomputeResponse {
   trades_skipped_r: number;
   trades_updated_session: number;
   trades_skipped_session: number;
+}
+
+export interface MistakeInsight {
+  tag: string;
+  pattern: string;
+}
+
+export interface WeeklyReviewResponse {
+  account_id: string;
+  from_date?: string;
+  to_date?: string;
+  summary: string;
+  top_mistakes: MistakeInsight[];
+  diagnosis: string;
+  improvement: string;
 }
