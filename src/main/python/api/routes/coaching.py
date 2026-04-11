@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -9,12 +11,23 @@ from sqlalchemy.orm import Session
 from src.main.python.api.dependencies import (
     get_account_repo, get_db, get_trade_repo, require_account,
 )
-from src.main.python.api.schemas.coaching import MistakeInsight, WeeklyReviewResponse
+from src.main.python.api.schemas.coaching import (
+    CoachingReviewListItem,
+    CoachingReviewListResponse,
+    MistakeInsight,
+    WeeklyReviewResponse,
+)
+from src.main.python.models.db_models import CoachingReviewModel
 from src.main.python.services.ai_coach import AICoachService
+from src.main.python.services.coaching_review_repository import CoachingReviewRepository
 
 router = APIRouter(prefix="/accounts", tags=["coaching"])
 
 _coach = AICoachService()
+
+
+def _get_coaching_repo(db: Session) -> CoachingReviewRepository:
+    return CoachingReviewRepository(db)
 
 
 @router.post("/{account_id}/coaching/weekly-review", response_model=WeeklyReviewResponse)
@@ -27,49 +40,116 @@ def generate_weekly_review(
     """
     Generate an AI coaching review for the specified date range.
 
-    Analyzes performance metrics, top recurring mistakes, execution quality
-    (followed_plan, is_a_plus_setup, problem_source), and returns a structured
-    review with: summary, top_mistakes, diagnosis, and one improvement priority.
+    Always returns a result — falls back to a rule-based review if the AI is
+    unavailable, the API key is missing, or the response cannot be parsed.
+
+    The review is persisted to the coaching_reviews table.
+    source="ai" for Claude-generated; source="fallback" for rule-based.
 
     Date range filters on exit_datetime (closed trades only).
     If no dates are supplied, all trades in the account are analyzed.
-
-    Requires ANTHROPIC_API_KEY environment variable.
     """
     account_repo = get_account_repo(db)
     trade_repo = get_trade_repo(db)
+    coaching_repo = _get_coaching_repo(db)
     account = require_account(account_id, account_repo)
+
     trades = trade_repo.get_by_account_filtered(
         account_id,
         from_date=from_date,
         to_date=to_date,
     )
-
     if not trades:
         raise HTTPException(
             status_code=422,
             detail="No closed trades found for the specified date range. Import trades first.",
         )
 
-    try:
-        result = _coach.generate_weekly_review(
-            trades=trades,
-            account=account,
-            from_date=from_date.date() if from_date else None,
-            to_date=to_date.date() if to_date else None,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    # Generate (AI or fallback — never raises)
+    result = _coach.generate(
+        trades=trades,
+        account=account,
+        from_date=from_date.date() if from_date else None,
+        to_date=to_date.date() if to_date else None,
+    )
+
+    # Persist
+    review_id = str(uuid.uuid4())
+    generated_at = datetime.utcnow()
+    orm = CoachingReviewModel(
+        review_id=review_id,
+        account_id=account_id,
+        from_date=from_date.date() if from_date else None,
+        to_date=to_date.date() if to_date else None,
+        generated_at=generated_at,
+        model_used=result.model_used,
+        source=result.source,
+        status=result.status,
+        output_json=json.dumps(result.to_output_dict()),
+        raw_response=result.raw_response,
+        error_message=result.error_message,
+    )
+    coaching_repo.save(orm)
 
     return WeeklyReviewResponse(
+        review_id=review_id,
         account_id=account_id,
         from_date=from_date.date().isoformat() if from_date else None,
         to_date=to_date.date().isoformat() if to_date else None,
-        summary=result.get("summary", ""),
+        generated_at=generated_at.isoformat(),
+        model_used=result.model_used,
+        source=result.source,
+        status=result.status,
+        summary=result.summary,
         top_mistakes=[
             MistakeInsight(tag=m.get("tag", ""), pattern=m.get("pattern", ""))
-            for m in result.get("top_mistakes", [])
+            for m in result.top_mistakes
         ],
-        diagnosis=result.get("diagnosis", ""),
-        improvement=result.get("improvement", ""),
+        diagnosis=result.diagnosis,
+        improvement=result.improvement,
+    )
+
+
+@router.get("/{account_id}/coaching/reviews", response_model=CoachingReviewListResponse)
+def list_coaching_reviews(
+    account_id: str,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+):
+    """
+    Return the most recent coaching reviews for an account, newest first.
+    Each item includes a summary_preview (first 120 chars) for quick scanning.
+    """
+    account_repo = get_account_repo(db)
+    coaching_repo = _get_coaching_repo(db)
+    require_account(account_id, account_repo)
+
+    rows = coaching_repo.list_by_account(account_id, limit=limit)
+    items = []
+    for row in rows:
+        # Recover summary from output_json if available
+        summary_preview = ""
+        if row.output_json:
+            try:
+                data = json.loads(row.output_json)
+                summary_preview = (data.get("summary") or "")[:120]
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
+        items.append(CoachingReviewListItem(
+            review_id=row.review_id,
+            account_id=row.account_id,
+            from_date=row.from_date.isoformat() if row.from_date else None,
+            to_date=row.to_date.isoformat() if row.to_date else None,
+            generated_at=row.generated_at.isoformat(),
+            model_used=row.model_used,
+            source=row.source,
+            status=row.status,
+            summary_preview=summary_preview,
+        ))
+
+    return CoachingReviewListResponse(
+        account_id=account_id,
+        total=len(items),
+        reviews=items,
     )

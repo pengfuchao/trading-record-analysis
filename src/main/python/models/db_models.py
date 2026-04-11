@@ -226,6 +226,24 @@ class DailyReviewModel(Base):
     )
 
 
+class CoachingReviewModel(Base):
+    __tablename__ = "coaching_reviews"
+
+    review_id:     Mapped[str]            = mapped_column(String(100), primary_key=True)
+    account_id:    Mapped[str]            = mapped_column(
+        String(100), ForeignKey("accounts.account_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    from_date:     Mapped[Optional[date]] = mapped_column(Date,     nullable=True)
+    to_date:       Mapped[Optional[date]] = mapped_column(Date,     nullable=True)
+    generated_at:  Mapped[datetime]       = mapped_column(DateTime(timezone=False), nullable=False)
+    model_used:    Mapped[str]            = mapped_column(String(100), nullable=False)
+    source:        Mapped[str]            = mapped_column(String(20),  nullable=False)   # "ai" | "fallback"
+    status:        Mapped[str]            = mapped_column(String(20),  nullable=False)   # "success" | "fallback" | "error"
+    output_json:   Mapped[Optional[str]]  = mapped_column(Text, nullable=True)           # JSON blob of review sections
+    raw_response:  Mapped[Optional[str]]  = mapped_column(Text, nullable=True)           # raw LLM text (AI path only)
+    error_message: Mapped[Optional[str]]  = mapped_column(Text, nullable=True)           # set on failure
+
+
 class SetupDefinitionModel(Base):
     __tablename__ = "setup_definitions"
 

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from src.main.python.models.account import Account
 from src.main.python.services.account_repository import AccountRepository
+from src.main.python.services.coaching_review_repository import CoachingReviewRepository
 from src.main.python.services.csv_parser import MTCSVParser
 from src.main.python.services.database import get_session
 from src.main.python.services.trade_repository import TradeRepository
@@ -24,6 +25,10 @@ def get_account_repo(db: Session = None) -> AccountRepository:
 
 def get_trade_repo(db: Session = None) -> TradeRepository:
     return TradeRepository(db)
+
+
+def get_coaching_repo(db: Session = None) -> CoachingReviewRepository:
+    return CoachingReviewRepository(db)
 
 
 def get_parser() -> MTCSVParser:

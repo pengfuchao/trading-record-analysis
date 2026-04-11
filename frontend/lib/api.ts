@@ -66,6 +66,8 @@ export const api = {
       { method: "POST" }
     );
   },
+  listCoachingReviews: (accountId: string, limit = 20) =>
+    request<CoachingReviewListResponse>(`/accounts/${accountId}/coaching/reviews?limit=${limit}`),
 
   // Import — derived field recompute
   recomputeDerived: (
@@ -414,11 +416,34 @@ export interface MistakeInsight {
 }
 
 export interface WeeklyReviewResponse {
+  review_id: string;
   account_id: string;
   from_date?: string;
   to_date?: string;
+  generated_at: string;
+  model_used: string;
+  source: "ai" | "fallback";
+  status: "success" | "fallback" | "error";
   summary: string;
   top_mistakes: MistakeInsight[];
   diagnosis: string;
   improvement: string;
+}
+
+export interface CoachingReviewListItem {
+  review_id: string;
+  account_id: string;
+  from_date?: string;
+  to_date?: string;
+  generated_at: string;
+  model_used: string;
+  source: "ai" | "fallback";
+  status: "success" | "fallback" | "error";
+  summary_preview: string;
+}
+
+export interface CoachingReviewListResponse {
+  account_id: string;
+  total: number;
+  reviews: CoachingReviewListItem[];
 }

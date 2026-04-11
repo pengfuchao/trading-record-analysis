@@ -1,19 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import { api, WeeklyReviewResponse } from "@/lib/api";
+import useSWR from "swr";
+import { api, WeeklyReviewResponse, CoachingReviewListItem } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 
 function isoWeekBounds(): { from: string; to: string } {
   const today = new Date();
-  const dow = today.getDay(); // 0=Sun
+  const dow = today.getDay();
   const mon = new Date(today);
   mon.setDate(today.getDate() - ((dow + 6) % 7));
   const sun = new Date(mon);
   sun.setDate(mon.getDate() + 6);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
   return { from: fmt(mon), to: fmt(sun) };
+}
+
+function SourceBadge({ source, status }: { source: string; status: string }) {
+  if (source === "fallback") {
+    return (
+      <span className="text-xs bg-yellow-900/40 text-yellow-300 border border-yellow-700/50 px-2 py-0.5 rounded">
+        Rule-based fallback
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs bg-green-900/40 text-green-300 border border-green-700/50 px-2 py-0.5 rounded">
+      AI generated
+    </span>
+  );
 }
 
 export default function CoachingPage() {
@@ -26,6 +42,11 @@ export default function CoachingPage() {
   const [review, setReview] = useState<WeeklyReviewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const { data: history, mutate: refreshHistory } = useSWR(
+    accountId ? `coaching-history-${accountId}` : null,
+    () => api.listCoachingReviews(accountId!),
+  );
+
   const handleGenerate = async () => {
     if (!accountId) return;
     setLoading(true);
@@ -37,6 +58,7 @@ export default function CoachingPage() {
         to_date: toDate ? `${toDate}T23:59:59` : undefined,
       });
       setReview(data);
+      refreshHistory();
     } catch (e: any) {
       setError(e.message ?? "Review generation failed");
     } finally {
@@ -101,6 +123,14 @@ export default function CoachingPage() {
 
           {review && (
             <div className="space-y-4">
+              {/* Metadata bar */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <SourceBadge source={review.source} status={review.status} />
+                <span className="text-xs text-gray-500">
+                  {review.model_used} · {new Date(review.generated_at).toLocaleString()}
+                </span>
+              </div>
+
               {/* Summary */}
               <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
                 <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">
@@ -143,6 +173,33 @@ export default function CoachingPage() {
                 <p className="text-sm text-blue-100 leading-relaxed font-medium">{review.improvement}</p>
               </section>
             </div>
+          )}
+
+          {/* Review history */}
+          {history && history.reviews.length > 0 && (
+            <section>
+              <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Past Reviews</h2>
+              <div className="bg-gray-900 border border-gray-800 rounded-lg divide-y divide-gray-800">
+                {history.reviews.map((r: CoachingReviewListItem) => (
+                  <div key={r.review_id} className="px-4 py-3 flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        {r.from_date && r.to_date && (
+                          <span className="text-xs text-gray-400">
+                            {r.from_date} – {r.to_date}
+                          </span>
+                        )}
+                        <SourceBadge source={r.source} status={r.status} />
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">{r.summary_preview}</p>
+                    </div>
+                    <span className="text-xs text-gray-600 whitespace-nowrap shrink-0">
+                      {new Date(r.generated_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
         </>
       )}
