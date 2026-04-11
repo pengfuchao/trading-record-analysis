@@ -195,25 +195,53 @@ export interface Trade {
 
 export interface AccountAnalytics {
   account_id: string;
+  generated_at: string;
+
+  // Account state
+  starting_balance?: number;
+  current_balance?: number;           // starting_balance + total_net_pnl
+
+  // Counts
   total_trades: number;
-  win_rate?: number;
+  winning_trades: number;
+  losing_trades: number;
+
+  // Rates (0.0–1.0)
+  win_rate?: number;                  // wins / total (includes breakevens in denominator)
+  win_rate_ex_be?: number;            // wins / (wins + losses) — excludes breakevens
   loss_rate?: number;
-  profit_factor?: number;
-  expectancy?: number;
+
+  // PnL
   total_net_pnl?: number;
   total_gross_pnl?: number;
+  total_return_pct?: number;          // (total_net_pnl / starting_balance) * 100
+
+  // Averages
   average_win?: number;
-  average_loss?: number;
-  average_r_multiple?: number;
-  max_drawdown?: number;
-  max_drawdown_pct?: number;
+  average_loss?: number;              // negative value
+  largest_win?: number;
+  largest_loss?: number;              // negative value
+
+  // Quality
+  profit_factor?: number;
+  expectancy?: number;                // avg $ per trade
+  payoff_ratio?: number;
+  average_r_multiple?: number;        // price-based: signed_price_move / sl_distance
+
+  // Drawdown / period loss
+  max_drawdown?: number;                          // peak-to-trough absolute $ (≤ 0)
+  max_drawdown_pct?: number;                      // % of peak equity (≤ 0)
+  max_drawdown_pct_of_starting_balance?: number;  // % of starting balance (≤ 0); FTMO-style
+  daily_drawdown?: number;                        // worst calendar-day closed-trade net PnL
+  weekly_drawdown?: number;                       // worst ISO-week closed-trade net PnL
+
+  // Risk-adjusted
   sharpe_ratio?: number;
   sortino_ratio?: number;
-  largest_win?: number;
-  largest_loss?: number;
-  max_consecutive_wins?: number;
-  max_consecutive_losses?: number;
-  payoff_ratio?: number;
+
+  // Streaks
+  max_consecutive_wins: number;
+  max_consecutive_losses: number;
 }
 
 export interface MistakeStats {

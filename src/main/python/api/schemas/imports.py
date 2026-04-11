@@ -43,6 +43,16 @@ class ImportPreviewResponse(BaseModel):
     validation_errors: List[ValidationErrorInfo]
 
 
+class RecomputeResponse(BaseModel):
+    """Result of a derived-field recompute pass over an account's trades."""
+    account_id: str
+    trades_processed: int
+    trades_updated_r: int           # actual_r_multiple values changed
+    trades_skipped_r: int           # missing required fields (exit_price/entry_price/stop_loss/direction)
+    trades_updated_session: int     # session values updated (only when recalculate_session=True)
+    trades_skipped_session: int     # session already manually set (skipped when overwrite_session=False)
+
+
 class ImportResponse(BaseModel):
     account_id: str
     import_run_id: str

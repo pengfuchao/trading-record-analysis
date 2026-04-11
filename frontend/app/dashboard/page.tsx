@@ -35,18 +35,29 @@ export default function DashboardPage() {
 
       {analytics && (
         <>
+          {/* Account balance */}
+          <section>
+            <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Account</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <StatCard label="Starting Balance" value={fmtPnl(analytics.starting_balance)} />
+              <StatCard label="Current Balance" value={fmtPnl(analytics.current_balance)} color={analytics.current_balance != null && analytics.starting_balance != null && analytics.current_balance >= analytics.starting_balance ? "green" : "red"} />
+              <StatCard label="Total Return" value={fmtPct(analytics.total_return_pct != null ? analytics.total_return_pct / 100 : null)} color={analytics.total_return_pct != null && analytics.total_return_pct >= 0 ? "green" : "red"} />
+              <StatCard label="Total PnL" value={fmtPnl(analytics.total_net_pnl)} color={analytics.total_net_pnl != null && analytics.total_net_pnl >= 0 ? "green" : "red"} />
+            </div>
+          </section>
+
           {/* Core metrics */}
           <section>
             <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Performance</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              <StatCard label="Total PnL" value={fmtPnl(analytics.total_net_pnl)} color={analytics.total_net_pnl != null && analytics.total_net_pnl >= 0 ? "green" : "red"} />
               <StatCard label="Total Trades" value={analytics.total_trades} />
-              <StatCard label="Win Rate" value={fmtPct(analytics.win_rate)} color="blue" />
+              <StatCard label="Win Rate" value={fmtPct(analytics.win_rate)} sub="incl. breakevens" color="blue" />
+              <StatCard label="Win Rate (ex BE)" value={fmtPct(analytics.win_rate_ex_be)} sub="wins ÷ (wins+losses)" color="blue" />
               <StatCard label="Profit Factor" value={fmt(analytics.profit_factor)} color="blue" />
               <StatCard label="Expectancy" value={fmt(analytics.expectancy)} sub="avg $ per trade" />
               <StatCard label="Avg Win" value={fmtPnl(analytics.average_win)} color="green" />
               <StatCard label="Avg Loss" value={fmtPnl(analytics.average_loss)} color="red" />
-              <StatCard label="Avg R" value={fmt(analytics.average_r_multiple)} sub="R multiple" />
+              <StatCard label="Avg R" value={fmt(analytics.average_r_multiple)} sub="price-based R" />
             </div>
           </section>
 
@@ -54,13 +65,15 @@ export default function DashboardPage() {
           <section>
             <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Risk</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              <StatCard label="Max Drawdown" value={fmtPnl(analytics.max_drawdown)} color="red" />
-              <StatCard label="Max DD %" value={fmtPct(analytics.max_drawdown_pct)} color="red" />
+              <StatCard label="Max Drawdown" value={fmtPnl(analytics.max_drawdown)} sub="peak-to-trough $" color="red" />
+              <StatCard label="Max DD % (balance)" value={fmtPct(analytics.max_drawdown_pct_of_starting_balance != null ? analytics.max_drawdown_pct_of_starting_balance / 100 : null)} sub="% of starting balance" color="red" />
+              <StatCard label="Worst Day PnL" value={fmtPnl(analytics.daily_drawdown)} sub="closed trades only" color="red" />
+              <StatCard label="Worst Week PnL" value={fmtPnl(analytics.weekly_drawdown)} sub="closed trades only" color="red" />
               <StatCard label="Largest Win" value={fmtPnl(analytics.largest_win)} color="green" />
               <StatCard label="Largest Loss" value={fmtPnl(analytics.largest_loss)} color="red" />
-              <StatCard label="Payoff Ratio" value={fmt(analytics.payoff_ratio)} />
               <StatCard label="Max Consec. Wins" value={analytics.max_consecutive_wins ?? "—"} color="green" />
               <StatCard label="Max Consec. Losses" value={analytics.max_consecutive_losses ?? "—"} color="red" />
+              <StatCard label="Payoff Ratio" value={fmt(analytics.payoff_ratio)} />
               <StatCard label="Sharpe" value={fmt(analytics.sharpe_ratio)} />
             </div>
           </section>

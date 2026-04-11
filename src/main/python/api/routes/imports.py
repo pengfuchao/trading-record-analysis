@@ -12,7 +12,7 @@ from src.main.python.api.dependencies import (
 )
 from src.main.python.api.schemas.imports import (
     ImportPreviewResponse, ImportPreviewRow,
-    ImportResponse, SkippedRowInfo, ValidationErrorInfo,
+    ImportResponse, RecomputeResponse, SkippedRowInfo, ValidationErrorInfo,
 )
 from src.main.python.services.csv_parser import MTCSVParser
 from src.main.python.services.trade_repository import TradeRepository
@@ -48,6 +48,50 @@ def _error_list(parser: MTCSVParser):
         )
         for e in parser.validation_errors
     ]
+
+
+# ── Recompute derived fields ───────────────────────────────────────────────────
+
+@router.post("/{account_id}/import/recompute-derived", response_model=RecomputeResponse)
+def recompute_derived(
+    account_id: str,
+    recalculate_r: bool = True,
+    recalculate_session: bool = False,
+    overwrite_session: bool = False,
+    broker_utc_offset: int = 2,
+    db: Session = Depends(get_db),
+):
+    """
+    Recompute broker-derived fields for existing trades — preserves all manual enrichment.
+
+    Use this after the actual_r_multiple formula was corrected (Batch 2) to fix stale
+    R values for previously imported trades without re-uploading CSV files.
+
+    recalculate_r (default True):
+      Recomputes actual_r_multiple using: signed_price_move / sl_distance.
+      Trades missing exit_price, entry_price, stop_loss, or direction get None.
+      Idempotent — safe to run repeatedly.
+
+    recalculate_session (default False — safe):
+      Re-derives session from entry_datetime using broker_utc_offset.
+      WARNING: session is a manual enrichment field. By default only fills
+      trades where session IS NULL. Set overwrite_session=True to replace all
+      values, including those manually set by the user.
+
+    broker_utc_offset (default 2):
+      UTC offset for broker server time. Only used when recalculate_session=True.
+    """
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    require_account(account_id, account_repo)
+    result = trade_repo.recompute_derived_fields(
+        account_id,
+        recalculate_r=recalculate_r,
+        recalculate_session=recalculate_session,
+        overwrite_session=overwrite_session,
+        broker_utc_offset=broker_utc_offset,
+    )
+    return RecomputeResponse(**result)
 
 
 # ── Preview (parse without saving) ────────────────────────────────────────────

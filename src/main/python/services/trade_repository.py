@@ -14,6 +14,46 @@ from src.main.python.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
+
+# ── Inline helpers for derived-field recomputation ───────────────────────────
+# These mirror DerivedFieldCalculator formulas but are inlined here to avoid
+# cross-layer imports inside the repository.
+
+def _price_based_r(
+    exit_price: Optional[float],
+    entry_price: Optional[float],
+    stop_loss: Optional[float],
+    direction_str: Optional[str],
+) -> Optional[float]:
+    """Price-based R: signed_price_move / sl_distance. Instrument-independent."""
+    if None in (exit_price, entry_price, direction_str) or not stop_loss:
+        return None
+    sl_distance = abs(entry_price - stop_loss)
+    if sl_distance == 0:
+        return None
+    if direction_str == "Long":
+        return round((exit_price - entry_price) / sl_distance, 2)
+    if direction_str == "Short":
+        return round((entry_price - exit_price) / sl_distance, 2)
+    return None
+
+
+def _derive_session(entry_datetime: Optional[datetime], utc_offset: int = 2) -> Optional[str]:
+    """Session derived from entry hour normalised to UTC+2 reference frame."""
+    if entry_datetime is None:
+        return None
+    hour = (entry_datetime.hour - (utc_offset - 2)) % 24
+    if hour < 9:
+        return "Asia"
+    if hour < 13:
+        return "London"
+    if hour < 17:
+        return "London/NY"
+    if hour < 21:
+        return "New York"
+    return "After Hours"
+
+
 # Broker-sourced fields: safe to overwrite on re-import.
 # Does NOT include any manual enrichment fields (strategy, rationale, flags, etc.).
 _BROKER_FIELDS = (
@@ -180,3 +220,139 @@ class TradeRepository:
             TradeModel.account_id == account_id
         )
         return self._session.execute(stmt).scalar_one()
+
+    def get_trades_for_date(self, account_id: str, target_date) -> List[Trade]:
+        """Return all closed trades whose exit_datetime falls on target_date (date object)."""
+        from datetime import datetime as _dt
+        day_start = _dt(target_date.year, target_date.month, target_date.day, 0, 0, 0)
+        day_end = _dt(target_date.year, target_date.month, target_date.day, 23, 59, 59)
+        stmt = (
+            select(TradeModel)
+            .where(
+                TradeModel.account_id == account_id,
+                TradeModel.exit_datetime >= day_start,
+                TradeModel.exit_datetime <= day_end,
+            )
+            .order_by(TradeModel.exit_datetime.asc())
+        )
+        rows = self._session.execute(stmt).scalars().all()
+        return [orm_to_trade(r) for r in rows]
+
+    def get_import_history(self, account_id: str) -> List[dict]:
+        """
+        Return one summary dict per import_run_id for this account.
+        Each dict contains: import_run_id, trade_count, earliest_trade_date,
+        latest_trade_date, symbols (sorted list of unique symbols).
+        Only import batches with a non-NULL import_run_id are returned.
+        """
+        stmt = (
+            select(
+                TradeModel.import_run_id,
+                func.count(TradeModel.trade_id).label("trade_count"),
+                func.min(TradeModel.exit_datetime).label("earliest"),
+                func.max(TradeModel.exit_datetime).label("latest"),
+            )
+            .where(
+                TradeModel.account_id == account_id,
+                TradeModel.import_run_id.isnot(None),
+            )
+            .group_by(TradeModel.import_run_id)
+            .order_by(func.min(TradeModel.exit_datetime).asc())
+        )
+        rows = self._session.execute(stmt).all()
+        history = []
+        for row in rows:
+            # Fetch distinct symbols for this batch
+            sym_stmt = (
+                select(TradeModel.symbol)
+                .where(
+                    TradeModel.account_id == account_id,
+                    TradeModel.import_run_id == row.import_run_id,
+                    TradeModel.symbol.isnot(None),
+                )
+                .distinct()
+            )
+            symbols = sorted(self._session.execute(sym_stmt).scalars().all())
+            history.append({
+                "import_run_id": row.import_run_id,
+                "trade_count": row.trade_count,
+                "earliest_trade_date": row.earliest,
+                "latest_trade_date": row.latest,
+                "symbols": symbols,
+            })
+        return history
+
+    def recompute_derived_fields(
+        self,
+        account_id: str,
+        recalculate_r: bool = True,
+        recalculate_session: bool = False,
+        overwrite_session: bool = False,
+        broker_utc_offset: int = 2,
+    ) -> dict:
+        """
+        Recompute broker-derived fields for all trades in an account.
+
+        Preserves ALL manual enrichment fields — only recomputes calculated
+        fields that can be fully derived from other stored broker-sourced values.
+
+        recalculate_r:
+          Recompute actual_r_multiple using the price-based formula:
+            LONG:  (exit_price - entry_price) / abs(entry_price - stop_loss)
+            SHORT: (entry_price - exit_price) / abs(stop_loss - entry_price)
+          Returns None for trades missing exit_price, entry_price, stop_loss,
+          or direction, OR where stop_loss == entry_price.
+          Safe to run multiple times — idempotent.
+
+        recalculate_session (default False — safe):
+          Re-derive session from entry_datetime using broker_utc_offset.
+          When overwrite_session=False (default): only fills in trades where
+          session IS NULL (never set). Does NOT overwrite manually set sessions.
+          When overwrite_session=True: replaces ALL session values, including
+          those the user may have set manually.
+
+        Returns a count dict suitable for RecomputeResponse.
+        """
+        stmt = select(TradeModel).where(TradeModel.account_id == account_id)
+        orm_trades = self._session.execute(stmt).scalars().all()
+
+        updated_r = 0
+        skipped_r = 0
+        updated_session = 0
+        skipped_session = 0
+
+        for t in orm_trades:
+            if recalculate_r:
+                new_r = _price_based_r(t.exit_price, t.entry_price, t.stop_loss, t.direction)
+                if new_r is not None or (
+                    t.exit_price is None or t.entry_price is None
+                    or not t.stop_loss or t.direction is None
+                ):
+                    if new_r is None:
+                        skipped_r += 1
+                    else:
+                        t.actual_r_multiple = new_r
+                        updated_r += 1
+
+            if recalculate_session:
+                if not overwrite_session and t.session is not None:
+                    skipped_session += 1
+                else:
+                    new_session = _derive_session(t.entry_datetime, broker_utc_offset)
+                    t.session = new_session
+                    updated_session += 1
+
+        self._session.flush()
+        logger.info(
+            "Recompute derived fields (account=%s): r_updated=%d r_skipped=%d "
+            "session_updated=%d session_skipped=%d",
+            account_id, updated_r, skipped_r, updated_session, skipped_session,
+        )
+        return {
+            "account_id": account_id,
+            "trades_processed": len(orm_trades),
+            "trades_updated_r": updated_r,
+            "trades_skipped_r": skipped_r,
+            "trades_updated_session": updated_session,
+            "trades_skipped_session": skipped_session,
+        }
