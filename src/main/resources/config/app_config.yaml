@@ -18,3 +18,13 @@ import:
   skip_invalid_rows: true
   encoding: "utf-8"
   decimal: "."
+
+# Session classification for auto-derived session field.
+# MT4/MT5 datetime values are stored in broker server local time.
+# Most MT4/MT5 brokers (FTMO, IC Markets, Pepperstone, etc.) run on EET:
+#   UTC+2 in winter (Oct–Mar), UTC+3 in summer (Mar–Oct).
+# Change broker_utc_offset if your broker uses a different server timezone.
+# The session hour boundaries below are calibrated against UTC+2.
+# Adjusting broker_utc_offset automatically shifts all boundaries accordingly.
+session_classification:
+  broker_utc_offset: 2   # EET winter (UTC+2). Use 3 for EET summer (UTC+3), 0 for UTC.

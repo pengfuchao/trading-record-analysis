@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Callable, Dict, List, Optional
 
 from src.main.python.core.metrics_calculator import MetricsCalculator
@@ -209,19 +209,33 @@ class AccountAnalytics:
         account: Account,
         daily_loss_limit_pct: float = 5.0,
         max_loss_limit_pct: float = 10.0,
+        broker_utc_offset: int = 2,
     ) -> dict:
         """
         Compute FTMO / prop firm challenge status based on closed trades only.
 
         Returns a dict matching FtmoStatusResponse fields.
-        Drawdown is measured against starting_balance (not peak equity) per FTMO rules:
-          - Daily limit: cannot lose more than daily_loss_limit_pct% of starting_balance in one day.
-          - Max limit:   cumulative drawdown from starting_balance cannot exceed max_loss_limit_pct%.
+
+        Drawdown rules (FTMO standard):
+          - Daily limit:   cannot lose > daily_loss_limit_pct% of starting_balance on one calendar day.
+          - Maximum limit: cumulative drawdown from starting_balance cannot exceed max_loss_limit_pct%.
+
+        today_pnl definition:
+          Sum of net_pnl for all trades whose exit_datetime falls on today's date in
+          broker server local time (UTC + broker_utc_offset). This is *realized* PnL only
+          — open positions and unrealized gains/losses are NOT included.
+
+          broker_utc_offset must match the UTC offset used by your broker's server.
+          Default is 2 (EET winter, UTC+2), used by most MT4/MT5 brokers.
+          Use 3 for EET summer (UTC+3), or 0 for UTC.
 
         Status values: SAFE / AT_RISK (>=75% of limit used) / BREACHED (>=100%) / UNKNOWN (no balance).
         """
         starting_balance = account.starting_balance or 0.0
-        today = date.today()
+        # Compute "today" in broker server local time so exit_datetime comparisons are consistent.
+        # exit_datetime in the DB is stored in broker local time (no timezone info attached).
+        # Using date.today() (machine local) can diverge from broker date around midnight.
+        today = (datetime.utcnow() + timedelta(hours=broker_utc_offset)).date()
 
         closed_trades = sorted(
             [t for t in trades if t.exit_datetime is not None],

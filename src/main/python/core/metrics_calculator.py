@@ -284,13 +284,39 @@ class MetricsCalculator:
             return None
         return (max_drawdown_abs / starting_balance) * 100  # max_drawdown_abs is ≤ 0
 
-    # ── Period Drawdown (FTMO-style) ─────────────────────────────────────────────
+    # ── Period Net PnL (worst period, based on closed trades only) ──────────────
+    #
+    # IMPORTANT — what these metrics measure and do NOT measure:
+    #
+    # These return the *sum of closed-trade net_pnl* for the worst calendar period.
+    # A positive value means the worst period was still a net win.
+    # A negative value means the worst period had a net loss.
+    #
+    # FTMO daily loss limit check: abs(daily_drawdown) >= 0.05 * starting_balance
+    # (compare the worst-day loss against the 5% threshold)
+    #
+    # What these do NOT compute:
+    #   - Intraperiod drawdown from that period's high-water mark
+    #   - Drawdown from open positions (no unrealized PnL is tracked)
+    #   - True equity drawdown within the period (would require tick/minute data)
+    #
+    # Limitation: if you had a +$500 morning trade and a -$600 afternoon trade on
+    # the same day, daily_drawdown = -$100 (net day PnL). The intraday drawdown
+    # from the day's peak was -$600, but that cannot be computed from closed-trade
+    # data alone.
 
     @staticmethod
     def daily_drawdown(
         pnls: List[float], exit_datetimes: List[datetime]
     ) -> Optional[float]:
-        """Most negative single calendar day PnL sum."""
+        """Worst (most negative) single calendar day net PnL sum across all closed trades.
+
+        Positive return value = even the worst day was a net win.
+        Negative return value = the worst day had a net loss.
+
+        Use abs(result) to compare against FTMO 5% daily loss limit.
+        This is NOT intraday drawdown from peak — see class docstring for details.
+        """
         if not pnls:
             return None
         grouped = _group_pnl_by_period(pnls, exit_datetimes, "day")
@@ -302,7 +328,13 @@ class MetricsCalculator:
     def weekly_drawdown(
         pnls: List[float], exit_datetimes: List[datetime]
     ) -> Optional[float]:
-        """Most negative ISO-week PnL sum."""
+        """Worst (most negative) ISO-week net PnL sum across all closed trades.
+
+        Positive return value = even the worst week was a net win.
+        Negative return value = the worst week had a net loss.
+
+        This is NOT intraweek drawdown from the week's peak equity.
+        """
         if not pnls:
             return None
         grouped = _group_pnl_by_period(pnls, exit_datetimes, "week")
@@ -314,7 +346,13 @@ class MetricsCalculator:
     def monthly_drawdown(
         pnls: List[float], exit_datetimes: List[datetime]
     ) -> Optional[float]:
-        """Most negative calendar-month PnL sum."""
+        """Worst (most negative) calendar-month net PnL sum across all closed trades.
+
+        Positive return value = even the worst month was a net win.
+        Negative return value = the worst month had a net loss.
+
+        This is NOT intramonth drawdown from the month's peak equity.
+        """
         if not pnls:
             return None
         grouped = _group_pnl_by_period(pnls, exit_datetimes, "month")

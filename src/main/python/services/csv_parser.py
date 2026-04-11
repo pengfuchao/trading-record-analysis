@@ -83,6 +83,8 @@ class MTCSVParser:
         self._asset_class_rules: dict = load_yaml(self._column_map_path).get(
             "asset_class_rules", {}
         )
+        session_cfg = self._config.get("session_classification", {})
+        self._session_utc_offset: int = int(session_cfg.get("broker_utc_offset", 2))
 
         self.skipped_rows: list = []
         self.validation_errors: List[ValidationError] = []
@@ -210,11 +212,14 @@ class MTCSVParser:
             raw_type = raw.get("trade_type")
             direction = calc.calc_direction(raw_type)
             holding_duration = calc.calc_holding_duration(entry_dt, exit_dt)
-            result = calc.calc_result(gross_pnl)
             net_pnl = calc.calc_net_pnl(gross_pnl, commission, swap)
-            actual_r = calc.calc_actual_r(gross_pnl, entry_price, stop_loss, lot_size, direction)
+            # Use net_pnl for result classification (gross fallback when net unavailable)
+            result = calc.calc_result(net_pnl, gross_pnl)
+            actual_r = calc.calc_actual_r(exit_price, entry_price, stop_loss, direction)
             symbol = raw.get("symbol")
             asset_class = calc.calc_asset_class(symbol, self._asset_class_rules)
+            # Auto-derive session from entry_datetime when not manually set
+            session = calc.calc_session(entry_dt, utc_offset=self._session_utc_offset)
 
             trade = Trade(
                 trade_id=raw.get("trade_id") or f"row_{row_index}",
@@ -240,6 +245,7 @@ class MTCSVParser:
                 result=result,
                 magic=magic,
                 comment=raw.get("comment"),
+                session=session,
             )
 
             errors = validator.validate(trade)

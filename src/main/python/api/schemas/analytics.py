@@ -192,12 +192,15 @@ class AnalyticsSummaryResponse(BaseModel):
     payoff_ratio: Optional[float]
     average_r_multiple: Optional[float]     # indicative; unreliable for indices
 
-    # Drawdown (all negative or zero)
-    max_drawdown: Optional[float]                       # absolute $ from peak equity
-    max_drawdown_pct: Optional[float]                   # % of peak equity (negative)
-    max_drawdown_pct_of_starting_balance: Optional[float]  # % of starting balance; FTMO-style
-    daily_drawdown: Optional[float]                     # worst single-day sum (negative)
-    weekly_drawdown: Optional[float]                    # worst ISO-week sum (negative)
+    # Drawdown / period loss
+    max_drawdown: Optional[float]                       # peak-to-trough absolute $ (≤ 0)
+    max_drawdown_pct: Optional[float]                   # peak-to-trough % of peak equity (≤ 0)
+    max_drawdown_pct_of_starting_balance: Optional[float]  # peak-to-trough % of starting balance (≤ 0); FTMO-style
+    # NOTE: daily/weekly values below are *worst-period closed-trade net PnL sums*,
+    # NOT intraperiod drawdown from the period's high-water mark.
+    # Negative = net losing period. Use abs() to compare against FTMO daily loss limit.
+    daily_drawdown: Optional[float]                     # worst calendar-day net PnL (closed trades only)
+    weekly_drawdown: Optional[float]                    # worst ISO-week net PnL (closed trades only)
 
     # Risk-adjusted
     sharpe_ratio: Optional[float]

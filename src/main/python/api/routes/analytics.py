@@ -52,9 +52,15 @@ def get_ftmo_status(
     account_id: str,
     daily_loss_limit_pct: float = 5.0,
     max_loss_limit_pct: float = 10.0,
+    broker_utc_offset: int = 2,
     db: Session = Depends(get_db),
 ):
-    """FTMO / prop firm challenge status based on closed trades only."""
+    """FTMO / prop firm challenge status based on closed trades only.
+
+    broker_utc_offset: UTC offset of the broker server (default 2 = EET winter).
+    Must match the timezone offset used by your broker's MT4/MT5 server so that
+    'today_pnl' is computed against the correct calendar day.
+    """
     account_repo = get_account_repo(db)
     trade_repo = get_trade_repo(db)
     account = require_account(account_id, account_repo)
@@ -63,6 +69,7 @@ def get_ftmo_status(
         trades, account,
         daily_loss_limit_pct=daily_loss_limit_pct,
         max_loss_limit_pct=max_loss_limit_pct,
+        broker_utc_offset=broker_utc_offset,
     )
     return FtmoStatusResponse(**status)
 
