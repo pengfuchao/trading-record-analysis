@@ -14,7 +14,8 @@ class PerformanceSummary:
     breakeven_trades:           int               = 0
 
     # ── Rates ──────────────────────────────────────────────────────────────
-    win_rate:                   Optional[float]   = None  # 0.0–1.0
+    win_rate:                   Optional[float]   = None  # wins / total (0.0–1.0)
+    win_rate_ex_be:             Optional[float]   = None  # wins / (wins+losses), excludes BE
     loss_rate:                  Optional[float]   = None
     breakeven_rate:             Optional[float]   = None
 
@@ -27,6 +28,7 @@ class PerformanceSummary:
     # ── PnL averages ───────────────────────────────────────────────────────
     avg_win:                    Optional[float]   = None
     avg_loss:                   Optional[float]   = None  # negative float
+    largest_single_win:         Optional[float]   = None  # positive float
     largest_single_loss:        Optional[float]   = None  # negative float
 
     # ── Ratios ─────────────────────────────────────────────────────────────
@@ -46,7 +48,8 @@ class PerformanceSummary:
 
     # ── Drawdown ───────────────────────────────────────────────────────────
     max_drawdown:               Optional[float]   = None  # absolute dollar (≤ 0)
-    max_drawdown_pct:           Optional[float]   = None  # percentage (≤ 0)
+    max_drawdown_pct:           Optional[float]   = None  # % of peak equity (≤ 0)
+    max_drawdown_pct_of_starting_balance: Optional[float] = None  # % of starting balance (≤ 0); FTMO-style
     relative_drawdown:          Optional[float]   = None  # 0.0–1.0 ratio (≤ 0)
     daily_drawdown:             Optional[float]   = None  # worst calendar-day sum
     weekly_drawdown:            Optional[float]   = None  # worst ISO-week sum
@@ -73,6 +76,10 @@ class AccountReport:
     # ── Identity ───────────────────────────────────────────────────────────
     account_id:          str
     generated_at:        datetime = field(default_factory=datetime.utcnow)
+
+    # ── Account State ─────────────────────────────────────────────────────
+    starting_balance:    Optional[float]   = None
+    current_balance:     Optional[float]   = None   # starting_balance + total_net_profit
 
     # ── Overall Performance ────────────────────────────────────────────────
     overall:             PerformanceSummary = field(default_factory=PerformanceSummary)

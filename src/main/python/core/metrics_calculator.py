@@ -65,6 +65,18 @@ class MetricsCalculator:
         return sum(1 for r in results if r == TradeResult.WIN) / len(results)
 
     @staticmethod
+    def win_rate_ex_be(results: List[TradeResult]) -> Optional[float]:
+        """Win rate excluding breakeven trades: wins / (wins + losses).
+
+        More meaningful than win_rate when many breakeven trades exist (e.g.
+        tight-stop scalping where commissions often push small wins to BE).
+        """
+        decided = [r for r in results if r in (TradeResult.WIN, TradeResult.LOSS)]
+        if not decided:
+            return None
+        return sum(1 for r in decided if r == TradeResult.WIN) / len(decided)
+
+    @staticmethod
     def loss_rate(results: List[TradeResult]) -> Optional[float]:
         if not results:
             return None
@@ -109,7 +121,9 @@ class MetricsCalculator:
         gross_loss = abs(sum(p for p, r in zip(pnls, results) if r == TradeResult.LOSS))
         if gross_loss == 0:
             return None  # undefined when no losing trades
-        return gross_profit / gross_loss if gross_profit > 0 else 0.0
+        if gross_profit == 0:
+            return None  # undefined when no winning trades (all losses)
+        return gross_profit / gross_loss
 
     @staticmethod
     def expectancy(pnls: List[float], results: List[TradeResult]) -> Optional[float]:
@@ -206,11 +220,18 @@ class MetricsCalculator:
         return curve
 
     @staticmethod
-    def drawdown_curve(equity: List[float]) -> List[float]:
-        """drawdown[i] = equity[i] - running_peak_up_to_i (always ≤ 0)."""
+    def drawdown_curve(
+        equity: List[float], initial_peak: Optional[float] = None
+    ) -> List[float]:
+        """drawdown[i] = equity[i] - running_peak_up_to_i (always ≤ 0).
+
+        initial_peak: if provided (e.g. account starting_balance), used as the
+        starting high-water mark so that the very first losing trade correctly
+        shows a negative drawdown rather than 0.
+        """
         if not equity:
             return []
-        peak = equity[0]
+        peak = initial_peak if initial_peak is not None else equity[0]
         result = []
         for val in equity:
             peak = max(peak, val)
@@ -248,6 +269,20 @@ class MetricsCalculator:
         """Same as max_drawdown_pct but expressed as a 0.0–1.0 ratio."""
         pct = MetricsCalculator.max_drawdown_pct(drawdown_curve, equity_curve)
         return pct / 100.0 if pct is not None else None
+
+    @staticmethod
+    def max_drawdown_pct_of_starting_balance(
+        max_drawdown_abs: Optional[float], starting_balance: float
+    ) -> Optional[float]:
+        """FTMO-style max drawdown: (abs_drawdown / starting_balance) * 100.
+
+        Always ≤ 0.  Returns None if starting_balance is zero or drawdown is None.
+        This differs from max_drawdown_pct which divides by the running peak equity.
+        FTMO's maximum loss limit (e.g. 10%) is measured against the initial balance.
+        """
+        if not starting_balance or max_drawdown_abs is None:
+            return None
+        return (max_drawdown_abs / starting_balance) * 100  # max_drawdown_abs is ≤ 0
 
     # ── Period Drawdown (FTMO-style) ─────────────────────────────────────────────
 
@@ -384,8 +419,17 @@ class MetricsCalculator:
     def largest_single_loss(
         pnls: List[float], results: List[TradeResult]
     ) -> Optional[float]:
+        """Most negative net_pnl among losing trades. Always ≤ 0."""
         losses = [p for p, r in zip(pnls, results) if r == TradeResult.LOSS]
         return min(losses) if losses else None
+
+    @staticmethod
+    def largest_single_win(
+        pnls: List[float], results: List[TradeResult]
+    ) -> Optional[float]:
+        """Largest net_pnl among winning trades. Always ≥ 0."""
+        wins = [p for p, r in zip(pnls, results) if r == TradeResult.WIN]
+        return max(wins) if wins else None
 
     # ── Exposure ────────────────────────────────────────────────────────────────
 
