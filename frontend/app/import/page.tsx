@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { mutate } from "swr";
-import { api, ImportPreviewResponse, ImportResponse } from "@/lib/api";
+import { api, ImportPreviewResponse, ImportResponse, RecomputeResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import { fmtDateTime, fmtPnl, fmt, pnlColor } from "@/lib/utils";
@@ -22,6 +22,8 @@ export default function ImportPage() {
   const [error, setError] = useState<string | null>(null);
   const [strategy, setStrategy] = useState<"skip" | "update_broker">("skip");
   const [dragging, setDragging] = useState(false);
+  const [recomputeState, setRecomputeState] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [recomputeResult, setRecomputeResult] = useState<RecomputeResponse | null>(null);
 
   const handleFile = useCallback(
     async (f: File) => {
@@ -82,6 +84,23 @@ export default function ImportPage() {
     }
   };
 
+  const handleRecompute = async () => {
+    if (!accountId) return;
+    setRecomputeState("running");
+    try {
+      const data = await api.recomputeDerived(accountId);
+      setRecomputeResult(data);
+      setRecomputeState("done");
+      // Refresh caches — R values and session affect analytics and trade list
+      mutate(`trades-${accountId}`);
+      mutate(`analytics-${accountId}`);
+      mutate(`mistakes-${accountId}`);
+    } catch (e: any) {
+      setError(e.message ?? "Recompute failed");
+      setRecomputeState("error");
+    }
+  };
+
   const reset = () => {
     setStage("idle");
     setIsImporting(false);
@@ -89,6 +108,8 @@ export default function ImportPage() {
     setPreview(null);
     setResult(null);
     setError(null);
+    setRecomputeState("idle");
+    setRecomputeResult(null);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -131,6 +152,42 @@ export default function ImportPage() {
               </p>
             )}
           </div>
+
+          {/* Recompute derived fields */}
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-2">
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Derived fields</p>
+            <p className="text-xs text-gray-400">
+              Recalculate price-based R and session for all trades in this account using the latest formulas.
+              Manual enrichment fields are never overwritten.
+            </p>
+            {recomputeState === "idle" && (
+              <button
+                onClick={handleRecompute}
+                className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                Recompute R & session →
+              </button>
+            )}
+            {recomputeState === "running" && (
+              <span className="flex items-center gap-2 text-sm text-gray-400">
+                <span className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                Recomputing…
+              </span>
+            )}
+            {recomputeState === "done" && recomputeResult && (
+              <p className="text-xs text-green-400">
+                Done — {recomputeResult.trades_updated_r} R values updated
+                {recomputeResult.trades_updated_session > 0
+                  ? `, ${recomputeResult.trades_updated_session} sessions updated`
+                  : ""}
+                {" "}({recomputeResult.trades_processed} trades processed)
+              </p>
+            )}
+            {recomputeState === "error" && (
+              <p className="text-xs text-red-400">Recompute failed — see error above.</p>
+            )}
+          </div>
+
           <div className="flex gap-3">
             <Link href="/trades" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-md transition-colors">
               View Trade Log

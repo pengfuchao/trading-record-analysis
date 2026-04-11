@@ -56,6 +56,19 @@ export const api = {
   importCsv: (accountId: string, file: File, duplicateStrategy: string) =>
     uploadFile<ImportResponse>(`/accounts/${accountId}/import`, file, { duplicate_strategy: duplicateStrategy }),
 
+  // Import — derived field recompute
+  recomputeDerived: (
+    accountId: string,
+    opts: { recalculate_r?: boolean; recalculate_session?: boolean; overwrite_session?: boolean; broker_utc_offset?: number } = {}
+  ) => {
+    const q = new URLSearchParams();
+    if (opts.recalculate_r !== undefined) q.set("recalculate_r", String(opts.recalculate_r));
+    if (opts.recalculate_session !== undefined) q.set("recalculate_session", String(opts.recalculate_session));
+    if (opts.overwrite_session !== undefined) q.set("overwrite_session", String(opts.overwrite_session));
+    if (opts.broker_utc_offset !== undefined) q.set("broker_utc_offset", String(opts.broker_utc_offset));
+    return request<RecomputeResponse>(`/accounts/${accountId}/import/recompute-derived?${q}`, { method: "POST" });
+  },
+
   // Analytics
   getAnalytics: (accountId: string) =>
     request<AccountAnalytics>(`/accounts/${accountId}/analytics`),
@@ -373,4 +386,13 @@ export interface ImportResponse {
   validation_error_count: number;
   skipped_rows: { row_index: number; trade_id?: string; reason: string }[];
   validation_errors: { trade_id?: string; field?: string; message: string }[];
+}
+
+export interface RecomputeResponse {
+  account_id: string;
+  trades_processed: number;
+  trades_updated_r: number;
+  trades_skipped_r: number;
+  trades_updated_session: number;
+  trades_skipped_session: number;
 }
