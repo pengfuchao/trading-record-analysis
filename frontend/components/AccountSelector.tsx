@@ -3,8 +3,31 @@
 import { useAccount } from "./AccountProvider";
 
 export default function AccountSelector() {
-  const { accounts, accountId, setAccountId } = useAccount();
-  if (accounts.length === 0) return null;
+  const { accounts, accountId, setAccountId, isLoadingAccounts, accountsError } = useAccount();
+
+  if (isLoadingAccounts) {
+    return (
+      <span className="text-xs text-gray-500 px-3 py-1.5">Loading accounts…</span>
+    );
+  }
+
+  if (accountsError) {
+    return (
+      <span
+        className="text-xs text-red-400 border border-red-800/50 bg-red-900/20 rounded-md px-3 py-1.5"
+        title={accountsError}
+      >
+        Account fetch failed
+      </span>
+    );
+  }
+
+  if (accounts.length === 0) {
+    return (
+      <span className="text-xs text-gray-500 px-3 py-1.5">No accounts — create one first</span>
+    );
+  }
+
   return (
     <select
       value={accountId}

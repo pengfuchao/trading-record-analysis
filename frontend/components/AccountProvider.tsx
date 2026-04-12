@@ -8,29 +8,59 @@ interface AccountCtx {
   accounts: Account[];
   accountId: string;
   setAccountId: (id: string) => void;
+  isLoadingAccounts: boolean;
+  accountsError: string | null;
 }
 
-const Ctx = createContext<AccountCtx>({ accounts: [], accountId: "", setAccountId: () => {} });
+const Ctx = createContext<AccountCtx>({
+  accounts: [],
+  accountId: "",
+  setAccountId: () => {},
+  isLoadingAccounts: false,
+  accountsError: null,
+});
 
 export function AccountProvider({ children }: { children: React.ReactNode }) {
-  const { data: accounts = [] } = useSWR("accounts", () => api.listAccounts());
+  const { data: accounts, error, isLoading } = useSWR(
+    "accounts",
+    () => api.listAccounts(),
+    { revalidateOnFocus: true, shouldRetryOnError: true, dedupingInterval: 5000 }
+  );
   const [accountId, setAccountIdState] = useState<string>("");
 
+  const accountList: Account[] = accounts ?? [];
+
   useEffect(() => {
+    if (accountList.length === 0) return;
     const saved = localStorage.getItem("accountId");
-    if (saved) {
+    // Verify saved id still exists in the list
+    if (saved && accountList.some((a) => a.account_id === saved)) {
       setAccountIdState(saved);
-    } else if (accounts.length > 0) {
-      setAccountIdState(accounts[0].account_id);
+    } else {
+      setAccountIdState(accountList[0].account_id);
     }
-  }, [accounts]);
+  }, [accountList]);
 
   const setAccountId = (id: string) => {
     setAccountIdState(id);
     localStorage.setItem("accountId", id);
   };
 
-  return <Ctx.Provider value={{ accounts, accountId, setAccountId }}>{children}</Ctx.Provider>;
+  const accountsError: string | null = error
+    ? (error instanceof Error ? error.message : String(error))
+    : null;
+
+  return (
+    <Ctx.Provider value={{
+      accounts: accountList,
+      accountId,
+      setAccountId,
+      isLoadingAccounts: isLoading,
+      accountsError,
+    }}>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export function useAccount() {

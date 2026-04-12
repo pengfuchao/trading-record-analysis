@@ -1,8 +1,10 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const method = (options?.method ?? "GET").toUpperCase();
+  const hasBody = method !== "GET" && method !== "HEAD" && method !== "DELETE";
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: hasBody ? { "Content-Type": "application/json" } : {},
     ...options,
   });
   if (!res.ok) {
