@@ -12,6 +12,7 @@ from src.main.python.api.dependencies import (
     get_account_repo, get_db, get_trade_repo, require_account,
 )
 from src.main.python.api.schemas.coaching import (
+    CoachingReviewDetailResponse,
     CoachingReviewListItem,
     CoachingReviewListResponse,
     MistakeInsight,
@@ -152,4 +153,49 @@ def list_coaching_reviews(
         account_id=account_id,
         total=len(items),
         reviews=items,
+    )
+
+
+@router.get("/{account_id}/coaching/reviews/{review_id}", response_model=CoachingReviewDetailResponse)
+def get_coaching_review(
+    account_id: str,
+    review_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Return the full content of a single saved coaching review.
+    Reconstructs the review sections from the stored output_json.
+    """
+    account_repo = get_account_repo(db)
+    coaching_repo = _get_coaching_repo(db)
+    require_account(account_id, account_repo)
+
+    row = coaching_repo.get_by_id(review_id)
+    if not row or row.account_id != account_id:
+        raise HTTPException(status_code=404, detail=f"Coaching review '{review_id}' not found")
+
+    output: dict = {}
+    if row.output_json:
+        try:
+            output = json.loads(row.output_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return CoachingReviewDetailResponse(
+        review_id=row.review_id,
+        account_id=row.account_id,
+        from_date=row.from_date.isoformat() if row.from_date else None,
+        to_date=row.to_date.isoformat() if row.to_date else None,
+        generated_at=row.generated_at.isoformat(),
+        model_used=row.model_used or "",
+        source=row.source or "fallback",
+        status=row.status or "fallback",
+        summary=output.get("summary", ""),
+        top_mistakes=[
+            MistakeInsight(tag=m.get("tag", ""), pattern=m.get("pattern", ""))
+            for m in (output.get("top_mistakes") or [])
+            if isinstance(m, dict)
+        ],
+        diagnosis=output.get("diagnosis", ""),
+        improvement=output.get("improvement", ""),
     )

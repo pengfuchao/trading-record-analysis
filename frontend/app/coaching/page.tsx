@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { api, WeeklyReviewResponse, CoachingReviewListItem } from "@/lib/api";
+import { api, WeeklyReviewResponse, CoachingReviewDetailResponse, CoachingReviewListItem } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 
@@ -39,7 +39,9 @@ export default function CoachingPage() {
   const [fromDate, setFromDate] = useState(defaultDates.from);
   const [toDate, setToDate] = useState(defaultDates.to);
   const [loading, setLoading] = useState(false);
-  const [review, setReview] = useState<WeeklyReviewResponse | null>(null);
+  const [review, setReview] = useState<WeeklyReviewResponse | CoachingReviewDetailResponse | null>(null);
+  const [reviewIsHistory, setReviewIsHistory] = useState(false);
+  const [loadingHistoryId, setLoadingHistoryId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const { data: history, mutate: refreshHistory } = useSWR(
@@ -52,6 +54,7 @@ export default function CoachingPage() {
     setLoading(true);
     setError(null);
     setReview(null);
+    setReviewIsHistory(false);
     try {
       const data = await api.generateWeeklyReview(accountId, {
         from_date: fromDate ? `${fromDate}T00:00:00` : undefined,
@@ -63,6 +66,21 @@ export default function CoachingPage() {
       setError(e.message ?? "Review generation failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenHistoryItem = async (reviewId: string) => {
+    if (!accountId) return;
+    setLoadingHistoryId(reviewId);
+    setError(null);
+    try {
+      const data = await api.getCoachingReview(accountId, reviewId);
+      setReview(data);
+      setReviewIsHistory(true);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load review");
+    } finally {
+      setLoadingHistoryId(null);
     }
   };
 
@@ -126,9 +144,22 @@ export default function CoachingPage() {
               {/* Metadata bar */}
               <div className="flex items-center gap-3 flex-wrap">
                 <SourceBadge source={review.source} status={review.status} />
+                {reviewIsHistory && (
+                  <span className="text-xs bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded">
+                    From history
+                  </span>
+                )}
                 <span className="text-xs text-gray-500">
                   {review.model_used} · {new Date(review.generated_at).toLocaleString()}
                 </span>
+                {reviewIsHistory && (
+                  <button
+                    onClick={() => { setReview(null); setReviewIsHistory(false); }}
+                    className="text-xs text-gray-500 hover:text-gray-300 ml-auto"
+                  >
+                    ✕ Close
+                  </button>
+                )}
               </div>
 
               {/* Summary */}
@@ -181,7 +212,12 @@ export default function CoachingPage() {
               <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Past Reviews</h2>
               <div className="bg-gray-900 border border-gray-800 rounded-lg divide-y divide-gray-800">
                 {history.reviews.map((r: CoachingReviewListItem) => (
-                  <div key={r.review_id} className="px-4 py-3 flex items-start justify-between gap-4">
+                  <button
+                    key={r.review_id}
+                    onClick={() => handleOpenHistoryItem(r.review_id)}
+                    disabled={loadingHistoryId === r.review_id}
+                    className="w-full px-4 py-3 flex items-start justify-between gap-4 text-left hover:bg-gray-800/50 transition-colors disabled:opacity-50"
+                  >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         {r.from_date && r.to_date && (
@@ -193,10 +229,17 @@ export default function CoachingPage() {
                       </div>
                       <p className="text-xs text-gray-500 truncate">{r.summary_preview}</p>
                     </div>
-                    <span className="text-xs text-gray-600 whitespace-nowrap shrink-0">
-                      {new Date(r.generated_at).toLocaleDateString()}
-                    </span>
-                  </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-gray-600 whitespace-nowrap">
+                        {new Date(r.generated_at).toLocaleDateString()}
+                      </span>
+                      {loadingHistoryId === r.review_id ? (
+                        <span className="w-3 h-3 border border-gray-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <span className="text-gray-600 text-xs">›</span>
+                      )}
+                    </div>
+                  </button>
                 ))}
               </div>
             </section>

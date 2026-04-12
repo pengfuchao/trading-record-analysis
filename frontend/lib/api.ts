@@ -68,6 +68,8 @@ export const api = {
   },
   listCoachingReviews: (accountId: string, limit = 20) =>
     request<CoachingReviewListResponse>(`/accounts/${accountId}/coaching/reviews?limit=${limit}`),
+  getCoachingReview: (accountId: string, reviewId: string) =>
+    request<CoachingReviewDetailResponse>(`/accounts/${accountId}/coaching/reviews/${reviewId}`),
 
   // Import — derived field recompute
   recomputeDerived: (
@@ -93,8 +95,8 @@ export const api = {
   // Setups
   listSetups: () => request<SetupDefinition[]>("/setups"),
   getSetup: (setupId: string) => request<SetupDefinition>(`/setups/${setupId}`),
-  getSetupStats: (accountId: string) =>
-    request<SetupStats[]>(`/accounts/${accountId}/setups/stats`),
+  getSetupReport: (accountId: string) =>
+    request<SetupReportResponse>(`/accounts/${accountId}/setups`),
 
   // Daily Plans
   listPlans: (accountId: string, params?: DateRange) => {
@@ -313,13 +315,46 @@ export interface SetupDefinition {
   updated_at: string;
 }
 
-export interface SetupStats {
+export interface SetupStatsResponse {
   setup_type: string;
-  total_trades: number;
+  trade_count: number;
   win_rate?: number;
+  loss_rate?: number;
+  breakeven_rate?: number;
   expectancy?: number;
-  average_r?: number;
-  total_pnl?: number;
+  avg_r_multiple?: number;
+  profit_factor?: number;
+  total_net_profit: number;
+  avg_win?: number;
+  avg_loss?: number;
+  max_drawdown?: number;
+  max_consecutive_losses: number;
+  avg_holding_duration_seconds?: number;
+  a_plus_rate?: number;
+  followed_plan_rate?: number;
+  by_session: Record<string, number>;
+  by_market_condition: Record<string, number>;
+  by_symbol: Record<string, number>;
+  best_session?: string;
+  worst_session?: string;
+  best_market_condition?: string;
+  worst_market_condition?: string;
+  best_symbol?: string;
+  worst_symbol?: string;
+  common_mistakes: Record<string, number>;
+}
+
+export interface SetupReportResponse {
+  account_id: string;
+  generated_at: string;
+  total_trades_analyzed: number;
+  trades_with_setup: number;
+  by_setup: Record<string, SetupStatsResponse>;
+  ranked_by_win_rate: string[];
+  ranked_by_expectancy: string[];
+  ranked_by_avg_r: string[];
+  ranked_by_total_profit: string[];
+  ranked_by_drawdown: string[];
 }
 
 export interface DailyPlan {
@@ -446,4 +481,19 @@ export interface CoachingReviewListResponse {
   account_id: string;
   total: number;
   reviews: CoachingReviewListItem[];
+}
+
+export interface CoachingReviewDetailResponse {
+  review_id: string;
+  account_id: string;
+  from_date?: string;
+  to_date?: string;
+  generated_at: string;
+  model_used: string;
+  source: "ai" | "fallback";
+  status: "success" | "fallback" | "error";
+  summary: string;
+  top_mistakes: MistakeInsight[];
+  diagnosis: string;
+  improvement: string;
 }

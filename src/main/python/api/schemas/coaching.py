@@ -63,3 +63,19 @@ class CoachingReviewListResponse(BaseModel):
     account_id: str
     total: int
     reviews: List[CoachingReviewListItem]
+
+
+class CoachingReviewDetailResponse(BaseModel):
+    """Full coaching review including all content sections."""
+    review_id: str
+    account_id: str
+    from_date: Optional[str] = None
+    to_date: Optional[str] = None
+    generated_at: str
+    model_used: str
+    source: str
+    status: str
+    summary: str
+    top_mistakes: List[MistakeInsight]
+    diagnosis: str
+    improvement: str

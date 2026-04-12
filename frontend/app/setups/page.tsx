@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { api, SetupDefinition } from "@/lib/api";
+import { api, SetupDefinition, SetupStatsResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import { fmtPct, fmt, fmtPnl, pnlColor } from "@/lib/utils";
 
-function SetupCard({ setup, stats }: { setup: SetupDefinition; stats?: any }) {
+function SetupCard({ setup, stats }: { setup: SetupDefinition; stats?: SetupStatsResponse }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
@@ -26,7 +26,7 @@ function SetupCard({ setup, stats }: { setup: SetupDefinition; stats?: any }) {
             <>
               <div>
                 <p className="text-xs text-gray-500">Trades</p>
-                <p className="text-sm font-mono">{stats.total_trades}</p>
+                <p className="text-sm font-mono">{stats.trade_count}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Win Rate</p>
@@ -34,11 +34,11 @@ function SetupCard({ setup, stats }: { setup: SetupDefinition; stats?: any }) {
               </div>
               <div>
                 <p className="text-xs text-gray-500">Avg R</p>
-                <p className={`text-sm font-mono ${pnlColor(stats.average_r)}`}>{fmt(stats.average_r)}</p>
+                <p className={`text-sm font-mono ${pnlColor(stats.avg_r_multiple)}`}>{fmt(stats.avg_r_multiple)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Total PnL</p>
-                <p className={`text-sm font-mono ${pnlColor(stats.total_pnl)}`}>{fmtPnl(stats.total_pnl)}</p>
+                <p className={`text-sm font-mono ${pnlColor(stats.total_net_profit)}`}>{fmtPnl(stats.total_net_profit)}</p>
               </div>
             </>
           ) : (
@@ -119,12 +119,13 @@ function SetupCard({ setup, stats }: { setup: SetupDefinition; stats?: any }) {
 export default function SetupsPage() {
   const { accountId } = useAccount();
   const { data: setups = [], isLoading } = useSWR("setups", () => api.listSetups());
-  const { data: statsArr = [] } = useSWR(
-    accountId ? `setup-stats-${accountId}` : null,
-    () => api.getSetupStats(accountId)
+  const { data: setupReport } = useSWR(
+    accountId ? `setup-report-${accountId}` : null,
+    () => api.getSetupReport(accountId!)
   );
 
-  const statsMap = Object.fromEntries(statsArr.map((s) => [s.setup_type, s]));
+  // by_setup is keyed by setup_type string (matches trade.setup_type)
+  const statsMap: Record<string, SetupStatsResponse> = setupReport?.by_setup ?? {};
 
   return (
     <div className="space-y-4">
@@ -143,7 +144,7 @@ export default function SetupsPage() {
           <SetupCard
             key={setup.setup_id}
             setup={setup}
-            stats={statsMap[setup.name]}
+            stats={statsMap[setup.name] ?? statsMap[setup.setup_id]}
           />
         ))}
       </div>
