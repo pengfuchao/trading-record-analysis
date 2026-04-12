@@ -1,5 +1,7 @@
+import csv
+import io
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -30,6 +32,59 @@ _DATETIME_FORMATS = [
     "%d.%m.%Y %H:%M:%S",
 ]
 
+# ── Format registry ────────────────────────────────────────────────────────────
+#
+# Each entry describes a CSV format variant that doesn't match the standard
+# MT4/MT5 column names directly.  The pipeline:
+#   1. probe_format() scans the first few rows to identify the format
+#   2. _normalize_for_format() renames columns so the existing FieldMapper
+#      (loaded from mt_column_map.yaml) can handle the row unchanged
+#
+# To add a new format: add a _FMTKEY_SENTINELS set + rename dicts below,
+# then wire them into _probe_format() and _normalize_for_format().
+
+# ── Compact English (MyFXBook / broker compact export) ─────────────────────────
+# Header:  Ticket,Open,Type,Volume,Symbol,Price,SL,TP,Close,Price,Swap,
+#          Commissions,Profit,Pips,"Trade duration in seconds"
+# Notable: duplicate "Price" columns (entry then exit); no metadata rows.
+_COMPACT_EN_SENTINELS: frozenset = frozenset({"Ticket", "Open", "Close", "SL", "Commissions"})
+_COMPACT_EN_SIMPLE_RENAMES: Dict[str, str] = {
+    "Open":        "Open Time",
+    "Close":       "Close Time",
+    "SL":          "S/L",
+    "TP":          "T/P",
+    "Commissions": "Commission",
+    "Volume":      "Lots",
+}
+# (original_col, name_for_1st_occurrence, name_for_2nd_occurrence)
+_COMPACT_EN_DUP_RENAMES: List[Tuple[str, str, str]] = [
+    ("Price", "Open Price", "Close Price"),
+]
+
+# ── Traditional Chinese MT5 report (FTMO and compatible brokers) ───────────────
+# Header (row 6 after metadata):
+#   時間,持倉,交易品種,類型,交易量,價位,止損,止盈,時間,價位,手續費,隔夜利息,盈利,,
+# Notable: 6 metadata rows before the real header; duplicate 時間 and 價位
+#          (same positional semantics as MT5 Time/Price).
+_CHINESE_MT5_SENTINELS: frozenset = frozenset({"持倉", "交易品種"})
+_CHINESE_MT5_SIMPLE_RENAMES: Dict[str, str] = {
+    "持倉":   "Position",
+    "交易品種": "Symbol",
+    "類型":   "Type",
+    "交易量":  "Volume",
+    "止損":   "S / L",
+    "止盈":   "T / P",
+    "手續費":  "Commission",
+    "隔夜利息": "Swap",
+    "盈利":   "Profit",
+}
+# Both occurrences of 時間→Time and 價位→Price keep the same target name;
+# the MT5 FieldMapper resolves them by positional index (first vs second).
+_CHINESE_MT5_DUP_RENAMES: List[Tuple[str, str, str]] = [
+    ("時間", "Time",  "Time"),
+    ("價位", "Price", "Price"),
+]
+
 
 def _parse_datetime(raw: Optional[str]) -> Optional[datetime]:
     if not raw:
@@ -46,7 +101,12 @@ def _parse_float(raw: Optional[str]) -> Optional[float]:
     if raw is None:
         return None
     try:
-        return float(str(raw).replace(",", ".").strip())
+        # Normalise before parsing:
+        #   "- 5.00"  → "-5.00"   (space between sign and digits)
+        #   "4 326.95"→ "4326.95" (space as thousands separator)
+        #   ","-style decimal separators → "."
+        cleaned = str(raw).strip().replace(",", ".").replace(" ", "")
+        return float(cleaned)
     except (ValueError, TypeError):
         return None
 
@@ -91,6 +151,112 @@ class MTCSVParser:
         self.detected_platform: str = ""    # set during parse(); "MT4" or "MT5"
         self.total_rows_in_file: int = 0    # row count before type filtering
 
+    # ── Format detection & normalisation ──────────────────────────────────────
+
+    def _probe_format(self, file_path: str) -> Tuple[str, int]:
+        """
+        Peek at the first 12 rows of the file to determine the CSV format.
+
+        Returns:
+            format_key  — one of "mt5" | "mt4" | "compact_en" | "chinese_mt5"
+            header_row  — 0-based index of the row that contains column headers
+                          (>0 for formats with metadata rows before the header)
+        """
+        # Try configured encoding, then safe fallbacks
+        encodings = [self._encoding, "utf-8-sig", "utf-8", "latin-1"]
+        raw_lines: List[str] = []
+        for enc in encodings:
+            try:
+                with open(file_path, encoding=enc, errors="replace") as fh:
+                    raw_lines = [fh.readline().rstrip("\n\r") for _ in range(12)]
+                break
+            except Exception:
+                continue
+
+        if not raw_lines:
+            logger.warning("Could not probe file encoding — defaulting to MT4")
+            return "mt4", 0
+
+        def _split(line: str) -> List[str]:
+            try:
+                return [c.strip().strip('"') for c in next(csv.reader(io.StringIO(line)))]
+            except Exception:
+                return [c.strip().strip('"') for c in line.split(",")]
+
+        for row_idx, line in enumerate(raw_lines):
+            cells = _split(line)
+            cell_set = set(cells) - {""}
+
+            # Compact English (must check before MT4 because both have "Ticket")
+            if _COMPACT_EN_SENTINELS <= cell_set:
+                logger.info("Detected format: compact_en (header at row %d)", row_idx)
+                return "compact_en", row_idx
+
+            # Chinese MT5 report (header appears after metadata rows)
+            if _CHINESE_MT5_SENTINELS <= cell_set:
+                logger.info("Detected format: chinese_mt5 (header at row %d)", row_idx)
+                return "chinese_mt5", row_idx
+
+            # Standard MT5: sentinel column "Position"
+            if _MT5_SENTINEL in cell_set:
+                logger.info("Detected format: mt5 (header at row %d)", row_idx)
+                return "mt5", row_idx
+
+            # Standard MT4: "Ticket" + "Open Time" to distinguish from compact_en
+            if _MT4_SENTINEL in cell_set and "Open Time" in cell_set:
+                logger.info("Detected format: mt4 (header at row %d)", row_idx)
+                return "mt4", row_idx
+
+        logger.warning("Format unrecognised — defaulting to MT4 at row 0")
+        return "mt4", 0
+
+    @staticmethod
+    def _apply_column_renames(
+        df: pd.DataFrame,
+        simple_renames: Dict[str, str],
+        dup_renames: List[Tuple[str, str, str]],
+    ) -> pd.DataFrame:
+        """
+        Rename DataFrame columns in-place and return the DataFrame.
+
+        dup_renames: list of (original, first_occurrence_new, second_occurrence_new)
+                     applied by positional index before simple_renames.
+        simple_renames: {old: new} applied to all remaining columns by name.
+        """
+        cols = list(df.columns)
+
+        # Positional renames for duplicate column names
+        for orig, first_new, second_new in dup_renames:
+            indices = [i for i, c in enumerate(cols) if c == orig]
+            if len(indices) >= 1:
+                cols[indices[0]] = first_new
+            if len(indices) >= 2:
+                cols[indices[1]] = second_new
+
+        # Name-based renames for unique columns
+        cols = [simple_renames.get(c, c) for c in cols]
+        df.columns = cols
+        return df
+
+    def _normalize_for_format(self, df: pd.DataFrame, format_key: str) -> pd.DataFrame:
+        """
+        Rename columns of a non-standard format so the existing FieldMapper
+        (keyed off standard MT4/MT5 column names) can process rows unchanged.
+
+        Standard formats ("mt4", "mt5") are returned as-is.
+        """
+        if format_key == "compact_en":
+            return self._apply_column_renames(
+                df, _COMPACT_EN_SIMPLE_RENAMES, _COMPACT_EN_DUP_RENAMES
+            )
+        if format_key == "chinese_mt5":
+            return self._apply_column_renames(
+                df, _CHINESE_MT5_SIMPLE_RENAMES, _CHINESE_MT5_DUP_RENAMES
+            )
+        return df
+
+    # ── Public parse entry-point ───────────────────────────────────────────────
+
     def parse(self, file_path: str, account: Account) -> List[Trade]:
         self.skipped_rows = []
         self.validation_errors = []
@@ -99,23 +265,32 @@ class MTCSVParser:
 
         logger.info("Parsing file: %s", file_path)
 
+        # Step 1: identify format and locate the real header row
+        format_key, header_row = self._probe_format(file_path)
+
+        # Step 2: read CSV, skipping any metadata rows that precede the header
+        skip = list(range(header_row)) if header_row > 0 else None
         try:
             df = pd.read_csv(
                 file_path,
                 encoding=self._encoding,
                 dtype=str,           # read everything as string; we coerce later
                 keep_default_na=False,
+                skiprows=skip,
             )
         except Exception as exc:
             logger.error("Failed to read CSV '%s': %s", file_path, exc)
             raise
 
-        logger.info("Loaded %d rows from CSV", len(df))
+        logger.info("Loaded %d rows from CSV (format=%s)", len(df), format_key)
         self.total_rows_in_file = len(df)
 
-        platform = self._detect_platform(df, account)
+        # Step 3: normalise non-standard column names to the MT4/MT5 schema
+        df = self._normalize_for_format(df, format_key)
+
+        platform = self._detect_platform(df, account, format_key)
         self.detected_platform = platform.value
-        logger.info("Detected platform: %s", platform.value)
+        logger.info("Detected platform: %s (format=%s)", platform.value, format_key)
 
         df = self._filter_trade_rows(df)
         logger.info("%d trade rows after filtering", len(df))
@@ -158,13 +333,22 @@ class MTCSVParser:
         )
         return trades
 
-    def _detect_platform(self, df: pd.DataFrame, account: Account) -> Platform:
+    def _detect_platform(
+        self, df: pd.DataFrame, account: Account, format_key: str = ""
+    ) -> Platform:
+        # Format key takes precedence when supplied by _probe_format
+        if format_key in ("mt5", "chinese_mt5"):
+            return Platform.MT5
+        if format_key in ("mt4", "compact_en"):
+            return Platform.MT4
+
+        # Legacy sentinel-based detection for unknown/unlabelled formats
         cols = df.columns.tolist()
         if _MT5_SENTINEL in cols:
             return Platform.MT5
         if _MT4_SENTINEL in cols:
             return Platform.MT4
-        # Fall back to account's platform if ambiguous
+
         logger.warning(
             "Could not detect platform from columns %s — using account platform %s",
             cols,
