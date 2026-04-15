@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -284,6 +285,13 @@ class MTCSVParser:
 
         logger.info("Loaded %d rows from CSV (format=%s)", len(df), format_key)
         self.total_rows_in_file = len(df)
+
+        # pandas 2.x+ auto-deduplicates duplicate column names by appending ".1", ".2", …
+        # (e.g. the second "Price" column becomes "Price.1", second "Time" → "Time.1").
+        # MT4/MT5 exports intentionally repeat column names for open/close timestamps and prices.
+        # Strip those suffixes now so the positional-rename logic in _normalize_for_format
+        # can find both occurrences and rename them correctly (→ "Open Price"/"Close Price" etc.).
+        df.columns = [re.sub(r"\.\d+$", "", c) for c in df.columns]
 
         # Step 3: normalise non-standard column names to the MT4/MT5 schema
         df = self._normalize_for_format(df, format_key)
