@@ -154,16 +154,27 @@ function initEdit(trade: Trade): EditState {
 function editToPatch(state: EditState): Partial<Trade> {
   const patch: Record<string, unknown> = {};
 
+  // Numeric: only send if user entered a parseable value
   if (state.stop_loss !== "") {
     const val = parseFloat(state.stop_loss);
     if (!isNaN(val)) patch.stop_loss = val;
   }
-  if (state.setup_type !== "") patch.setup_type = state.setup_type;
-  if (state.strategy !== "") patch.strategy = state.strategy;
-  if (state.session !== "") patch.session = state.session;
-  if (state.higher_tf_bias !== "") patch.higher_tf_bias = state.higher_tf_bias;
-  if (state.entry_timeframe !== "") patch.entry_timeframe = state.entry_timeframe;
-  if (state.market_condition !== "") patch.market_condition = state.market_condition;
+
+  // String fields: always send so empty string clears the stored value
+  patch.setup_type = state.setup_type;
+  patch.strategy = state.strategy;
+  patch.session = state.session;
+  patch.higher_tf_bias = state.higher_tf_bias;
+  patch.entry_timeframe = state.entry_timeframe;
+  patch.market_condition = state.market_condition;
+  patch.trade_quality = state.trade_quality;
+  patch.problem_source = state.problem_source;
+  patch.lesson_learned = state.lesson_learned;
+  patch.notes = state.notes;
+  patch.repeat_next_time = state.repeat_next_time;
+  patch.avoid_next_time = state.avoid_next_time;
+
+  // Booleans: always send
   if (state.followed_plan !== null) patch.followed_plan = state.followed_plan;
   if (state.is_a_plus_setup !== null) patch.is_a_plus_setup = state.is_a_plus_setup;
   patch.early_entry = state.early_entry;
@@ -176,12 +187,6 @@ function editToPatch(state: EditState): Partial<Trade> {
   patch.moved_stop = state.moved_stop;
   patch.premature_exit = state.premature_exit;
   patch.held_loser_too_long = state.held_loser_too_long;
-  if (state.trade_quality !== "") patch.trade_quality = state.trade_quality;
-  if (state.problem_source !== "") patch.problem_source = state.problem_source;
-  if (state.lesson_learned !== "") patch.lesson_learned = state.lesson_learned;
-  if (state.notes !== "") patch.notes = state.notes;
-  if (state.repeat_next_time !== "") patch.repeat_next_time = state.repeat_next_time;
-  if (state.avoid_next_time !== "") patch.avoid_next_time = state.avoid_next_time;
 
   return patch as Partial<Trade>;
 }

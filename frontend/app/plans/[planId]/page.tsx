@@ -118,22 +118,38 @@ function initEdit(plan: TradePlan): EditState {
 
 function editToPatch(state: EditState): Partial<TradePlan> {
   const patch: Record<string, unknown> = { status: state.status };
-  if (state.symbol) patch.symbol = state.symbol.toUpperCase();
-  if (state.intended_direction) patch.intended_direction = state.intended_direction;
-  if (state.setup_type) patch.setup_type = state.setup_type;
-  if (state.strategy) patch.strategy = state.strategy;
-  if (state.bias) patch.bias = state.bias;
-  if (state.thesis) patch.thesis = state.thesis;
-  if (state.entry_logic) patch.entry_logic = state.entry_logic;
-  if (state.stop_loss_logic) patch.stop_loss_logic = state.stop_loss_logic;
-  if (state.take_profit_logic) patch.take_profit_logic = state.take_profit_logic;
-  if (state.invalidation_logic) patch.invalidation_logic = state.invalidation_logic;
-  if (state.planned_entry_zone) patch.planned_entry_zone = state.planned_entry_zone;
-  if (state.planned_stop_loss) patch.planned_stop_loss = parseFloat(state.planned_stop_loss);
-  if (state.planned_take_profit) patch.planned_take_profit = parseFloat(state.planned_take_profit);
-  if (state.planned_rr) patch.planned_rr = parseFloat(state.planned_rr);
+
+  // String fields: always send so empty string clears the stored value
+  patch.symbol = state.symbol ? state.symbol.toUpperCase() : "";
+  patch.intended_direction = state.intended_direction;
+  patch.setup_type = state.setup_type;
+  patch.strategy = state.strategy;
+  patch.bias = state.bias;
+  patch.thesis = state.thesis;
+  patch.entry_logic = state.entry_logic;
+  patch.stop_loss_logic = state.stop_loss_logic;
+  patch.take_profit_logic = state.take_profit_logic;
+  patch.invalidation_logic = state.invalidation_logic;
+  patch.planned_entry_zone = state.planned_entry_zone;
+  patch.notes = state.notes;
+
+  // Numeric: only send if parseable
+  if (state.planned_stop_loss !== "") {
+    const v = parseFloat(state.planned_stop_loss);
+    if (!isNaN(v)) patch.planned_stop_loss = v;
+  }
+  if (state.planned_take_profit !== "") {
+    const v = parseFloat(state.planned_take_profit);
+    if (!isNaN(v)) patch.planned_take_profit = v;
+  }
+  if (state.planned_rr !== "") {
+    const v = parseFloat(state.planned_rr);
+    if (!isNaN(v)) patch.planned_rr = v;
+  }
+
+  // Boolean: always send
   patch.is_a_plus_setup = state.is_a_plus_setup;
-  if (state.notes) patch.notes = state.notes;
+
   return patch as Partial<TradePlan>;
 }
 

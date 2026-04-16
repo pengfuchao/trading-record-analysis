@@ -132,8 +132,11 @@ export default function DashboardPage() {
     })
   );
   const { data: mistakes } = useSWR(
-    accountId ? `mistakes-${accountId}` : null,
-    () => api.getMistakes(accountId)
+    accountId ? `mistakes-${accountId}-${fromDate}-${toDate}` : null,
+    () => api.getMistakes(accountId, {
+      from_date: fromDate || undefined,
+      to_date: toDate || undefined,
+    })
   );
 
   const hasEquity = analytics?.equity_curve && analytics.equity_curve.length > 1;

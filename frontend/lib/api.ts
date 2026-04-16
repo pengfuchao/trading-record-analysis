@@ -1,5 +1,10 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
+/** Append T23:59:59 so a plain YYYY-MM-DD to_date includes all trades on that day. */
+function endOfDay(date: string | undefined): string | undefined {
+  return date ? `${date}T23:59:59` : undefined;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const method = (options?.method ?? "GET").toUpperCase();
   const hasBody = method !== "GET" && method !== "HEAD" && method !== "DELETE";
@@ -41,7 +46,7 @@ export const api = {
     if (params?.symbol) q.set("symbol", params.symbol);
     if (params?.result) q.set("result", params.result);
     if (params?.from_date) q.set("from_date", params.from_date);
-    if (params?.to_date) q.set("to_date", params.to_date);
+    if (params?.to_date) q.set("to_date", endOfDay(params.to_date)!);
     return request<Trade[]>(`/accounts/${accountId}/trades?${q}`);
   },
   getTrade: (accountId: string, tradeId: string) =>
@@ -90,14 +95,19 @@ export const api = {
   getAnalytics: (accountId: string, params?: DateRange) => {
     const q = new URLSearchParams();
     if (params?.from_date) q.set("from_date", params.from_date);
-    if (params?.to_date) q.set("to_date", params.to_date);
+    if (params?.to_date) q.set("to_date", endOfDay(params.to_date)!);
     const qs = q.toString();
     return request<AccountAnalytics>(`/accounts/${accountId}/analytics${qs ? `?${qs}` : ""}`);
   },
 
   // Mistakes
-  getMistakes: (accountId: string) =>
-    request<MistakeReport>(`/accounts/${accountId}/mistakes`),
+  getMistakes: (accountId: string, params?: DateRange) => {
+    const q = new URLSearchParams();
+    if (params?.from_date) q.set("from_date", params.from_date);
+    if (params?.to_date) q.set("to_date", endOfDay(params.to_date)!);
+    const qs = q.toString();
+    return request<MistakeReport>(`/accounts/${accountId}/mistakes${qs ? `?${qs}` : ""}`);
+  },
 
   // Setups
   listSetups: () => request<SetupDefinition[]>("/setups"),
