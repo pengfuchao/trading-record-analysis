@@ -120,6 +120,31 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  // Trade Plans
+  listTradePlans: (accountId: string, status?: string) => {
+    const q = new URLSearchParams();
+    if (status) q.set("status", status);
+    return request<TradePlan[]>(`/accounts/${accountId}/trade-plans?${q}`);
+  },
+  getTradePlan: (accountId: string, planId: string) =>
+    request<TradePlan>(`/accounts/${accountId}/trade-plans/${planId}`),
+  createTradePlan: (accountId: string, body: Partial<TradePlan>) =>
+    request<TradePlan>(`/accounts/${accountId}/trade-plans`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateTradePlan: (accountId: string, planId: string, body: Partial<TradePlan>) =>
+    request<TradePlan>(`/accounts/${accountId}/trade-plans/${planId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteTradePlan: (accountId: string, planId: string) =>
+    request<void>(`/accounts/${accountId}/trade-plans/${planId}`, { method: "DELETE" }),
+  linkPlanToTrade: (accountId: string, planId: string, tradeId: string) =>
+    request<Trade>(`/accounts/${accountId}/trade-plans/${planId}/link/${tradeId}`, { method: "POST" }),
+  unlinkPlanFromTrade: (accountId: string, planId: string, tradeId: string) =>
+    request<Trade>(`/accounts/${accountId}/trade-plans/${planId}/link/${tradeId}`, { method: "DELETE" }),
+
   // Daily Reviews
   listReviews: (accountId: string, params?: DateRange) => {
     const q = new URLSearchParams();
@@ -219,8 +244,33 @@ export interface Trade {
   repeat_next_time?: string;
   avoid_next_time?: string;
   notes?: string;
+  trade_plan_id?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface TradePlan {
+  plan_id: string;
+  account_id: string;
+  status: string;                      // planned | linked | cancelled
+  symbol?: string;
+  intended_direction?: string;         // long | short
+  setup_type?: string;
+  strategy?: string;
+  bias?: string;
+  thesis?: string;
+  entry_logic?: string;
+  stop_loss_logic?: string;
+  take_profit_logic?: string;
+  invalidation_logic?: string;
+  planned_entry_zone?: string;
+  planned_stop_loss?: number;
+  planned_take_profit?: number;
+  planned_rr?: number;
+  is_a_plus_setup?: boolean;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface AccountAnalytics {

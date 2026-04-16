@@ -3,7 +3,7 @@
 import { use, useState } from "react";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
-import { api, Trade } from "@/lib/api";
+import { api, Trade, TradePlan } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import Badge from "@/components/Badge";
 import { fmtDateTime, fmtPnl, fmt, pnlColor } from "@/lib/utils";
@@ -197,6 +197,12 @@ export default function TradeDetailPage({ params }: { params: Promise<{ tradeId:
   const { data: trade, isLoading } = useSWR(
     swrKey,
     () => api.getTrade(accountId, tradeId)
+  );
+
+  // Load linked plan if trade has one
+  const { data: linkedPlan } = useSWR(
+    trade?.trade_plan_id && accountId ? `trade-plan-${trade.trade_plan_id}` : null,
+    () => api.getTradePlan(accountId, trade!.trade_plan_id!)
   );
 
   const [editing, setEditing] = useState(false);
@@ -535,6 +541,47 @@ export default function TradeDetailPage({ params }: { params: Promise<{ tradeId:
               {trade.avoid_next_time && <Field label="Avoid Next Time" value={trade.avoid_next_time} />}
               {trade.notes && <Field label="Notes" value={<p className="whitespace-pre-wrap">{trade.notes}</p>} />}
             </dl>
+          </section>
+
+          {/* Linked plan */}
+          <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+            <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-4">Linked Trade Plan</h2>
+            {!trade.trade_plan_id && (
+              <div className="text-xs text-gray-500">
+                No plan linked. <Link href="/plans" className="text-blue-400 hover:text-blue-300">Go to Plans</Link> to create and link a plan.
+              </div>
+            )}
+            {trade.trade_plan_id && linkedPlan && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Link href={`/plans/${linkedPlan.plan_id}`} className="text-sm text-blue-400 hover:text-blue-300 font-medium">
+                    {linkedPlan.symbol ?? "Plan"} {linkedPlan.intended_direction ? `(${linkedPlan.intended_direction})` : ""} →
+                  </Link>
+                  <span className="text-xs bg-green-900/40 text-green-300 px-2 py-0.5 rounded">linked</span>
+                </div>
+                <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {linkedPlan.setup_type && <Field label="Setup" value={linkedPlan.setup_type} />}
+                  {linkedPlan.bias && <Field label="Bias" value={linkedPlan.bias} />}
+                  {linkedPlan.planned_rr != null && <Field label="Planned R:R" value={String(linkedPlan.planned_rr)} />}
+                  {linkedPlan.planned_entry_zone && <Field label="Entry Zone" value={linkedPlan.planned_entry_zone} />}
+                </dl>
+                {linkedPlan.thesis && (
+                  <div>
+                    <dt className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Thesis</dt>
+                    <dd className="text-sm text-gray-300 whitespace-pre-wrap">{linkedPlan.thesis}</dd>
+                  </div>
+                )}
+                {linkedPlan.invalidation_logic && (
+                  <div>
+                    <dt className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Invalidation</dt>
+                    <dd className="text-sm text-gray-300 whitespace-pre-wrap">{linkedPlan.invalidation_logic}</dd>
+                  </div>
+                )}
+              </div>
+            )}
+            {trade.trade_plan_id && !linkedPlan && (
+              <p className="text-xs text-gray-500">Loading plan…</p>
+            )}
           </section>
         </>
       )}
