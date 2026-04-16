@@ -359,11 +359,13 @@ class MT5SyncConfigModel(Base):
     polling_interval_minutes: Mapped[int]            = mapped_column(Integer,      nullable=False, default=60)
     enabled:                  Mapped[bool]           = mapped_column(Boolean,      nullable=False, default=True)
     created_at:               Mapped[datetime]       = mapped_column(
-        DateTime(timezone=False), nullable=False, server_default=func.now()
+        DateTime(timezone=False), nullable=False,
+        default=datetime.utcnow, server_default=func.now(),
     )
     updated_at:               Mapped[datetime]       = mapped_column(
         DateTime(timezone=False), nullable=False,
-        server_default=func.now(), onupdate=func.now(),
+        default=datetime.utcnow, server_default=func.now(),
+        onupdate=datetime.utcnow,
     )
 
 

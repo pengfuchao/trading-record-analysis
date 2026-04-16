@@ -95,22 +95,39 @@ class MT5Connector:
             err = mt5.last_error()
             raise MT5ConnectionError(f"mt5.initialize() failed: {err}")
 
-        if not mt5.login(
-            login=self._config.login,
-            password=self._config.password,
-            server=self._config.server,
-        ):
-            err = mt5.last_error()
-            mt5.shutdown()
-            raise MT5ConnectionError(
-                f"mt5.login() failed for account {self._config.login} "
-                f"on server {self._config.server}: {err}"
+        # If the terminal is already logged in to the requested account,
+        # skip mt5.login() — re-authenticating with a placeholder password
+        # would fail even though the session is live.  This is the common
+        # real-world case: MT5 is already running on the trader's machine.
+        existing = mt5.account_info()
+        already_logged_in = (
+            existing is not None
+            and existing.login == self._config.login
+            and existing.server == self._config.server
+        )
+
+        if already_logged_in:
+            logger.info(
+                "MT5 already logged in: account=%d server=%s — skipping mt5.login()",
+                self._config.login, self._config.server,
+            )
+        else:
+            if not mt5.login(
+                login=self._config.login,
+                password=self._config.password,
+                server=self._config.server,
+            ):
+                err = mt5.last_error()
+                mt5.shutdown()
+                raise MT5ConnectionError(
+                    f"mt5.login() failed for account {self._config.login} "
+                    f"on server {self._config.server}: {err}"
+                )
+            logger.info(
+                "MT5 logged in: account=%d server=%s",
+                self._config.login, self._config.server,
             )
 
-        logger.info(
-            "MT5 connected: account=%d server=%s",
-            self._config.login, self._config.server,
-        )
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
