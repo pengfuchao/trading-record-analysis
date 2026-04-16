@@ -126,6 +126,14 @@ class TradeModel(Base):
     screenshot_after:  Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     notes:             Mapped[Optional[str]] = mapped_column(Text,         nullable=True)
 
+    # ── Plan linking ──────────────────────────────────────────────────────────
+    trade_plan_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        ForeignKey("trade_plans.plan_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # ── Audit / import tracking ───────────────────────────────────────────────
     import_run_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     created_at:    Mapped[datetime]      = mapped_column(
@@ -136,7 +144,8 @@ class TradeModel(Base):
         server_default=func.now(), onupdate=func.now(),
     )
 
-    account: Mapped["AccountModel"] = relationship("AccountModel", back_populates="trades")
+    account:    Mapped["AccountModel"]            = relationship("AccountModel", back_populates="trades")
+    trade_plan: Mapped[Optional["TradePlanModel"]] = relationship("TradePlanModel", back_populates="trades", foreign_keys=[trade_plan_id])
 
     __table_args__ = (
         Index("ix_trades_account_exit",   "account_id", "exit_datetime"),
@@ -242,6 +251,68 @@ class CoachingReviewModel(Base):
     output_json:   Mapped[Optional[str]]  = mapped_column(Text, nullable=True)           # JSON blob of review sections
     raw_response:  Mapped[Optional[str]]  = mapped_column(Text, nullable=True)           # raw LLM text (AI path only)
     error_message: Mapped[Optional[str]]  = mapped_column(Text, nullable=True)           # set on failure
+
+
+class TradePlanModel(Base):
+    __tablename__ = "trade_plans"
+
+    # ── Identifiers ───────────────────────────────────────────────────────────
+    plan_id:    Mapped[str] = mapped_column(String(100), primary_key=True)
+    account_id: Mapped[str] = mapped_column(
+        String(100),
+        ForeignKey("accounts.account_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # ── Status ────────────────────────────────────────────────────────────────
+    # planned | linked | cancelled
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="planned")
+
+    # ── Instrument intent ─────────────────────────────────────────────────────
+    symbol:              Mapped[Optional[str]] = mapped_column(String(20),   nullable=True)
+    intended_direction:  Mapped[Optional[str]] = mapped_column(String(10),   nullable=True)  # long | short
+
+    # ── Setup / strategy ─────────────────────────────────────────────────────
+    setup_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    strategy:   Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # ── Thesis ────────────────────────────────────────────────────────────────
+    bias:               Mapped[Optional[str]] = mapped_column(String(50),  nullable=True)
+    thesis:             Mapped[Optional[str]] = mapped_column(Text,         nullable=True)
+    entry_logic:        Mapped[Optional[str]] = mapped_column(Text,         nullable=True)
+    stop_loss_logic:    Mapped[Optional[str]] = mapped_column(Text,         nullable=True)
+    take_profit_logic:  Mapped[Optional[str]] = mapped_column(Text,         nullable=True)
+    invalidation_logic: Mapped[Optional[str]] = mapped_column(Text,         nullable=True)
+
+    # ── Planned levels ────────────────────────────────────────────────────────
+    planned_entry_zone: Mapped[Optional[str]]   = mapped_column(String(100), nullable=True)
+    planned_stop_loss:  Mapped[Optional[float]] = mapped_column(Float,        nullable=True)
+    planned_take_profit:Mapped[Optional[float]] = mapped_column(Float,        nullable=True)
+    planned_rr:         Mapped[Optional[float]] = mapped_column(Float,        nullable=True)
+
+    # ── Quality flag ─────────────────────────────────────────────────────────
+    is_a_plus_setup: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+
+    # ── Notes ─────────────────────────────────────────────────────────────────
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # ── Audit ─────────────────────────────────────────────────────────────────
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False,
+        server_default=func.now(), onupdate=func.now(),
+    )
+
+    trades: Mapped[List["TradeModel"]] = relationship(
+        "TradeModel", back_populates="trade_plan", foreign_keys="TradeModel.trade_plan_id"
+    )
+
+    __table_args__ = (
+        Index("ix_trade_plans_account_status", "account_id", "status"),
+    )
 
 
 class SetupDefinitionModel(Base):

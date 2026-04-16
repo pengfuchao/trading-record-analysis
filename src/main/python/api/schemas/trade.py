@@ -94,6 +94,7 @@ class TradeUpdate(BaseModel):
     """Only enrichment + correctable fields. Core execution data is immutable after import."""
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
+    trade_plan_id: Optional[str] = None   # set to "" to unlink
 
     setup_type: Optional[str] = None
     strategy: Optional[str] = None
@@ -194,6 +195,7 @@ class TradeResponse(BaseModel):
     screenshot_during: Optional[str]
     screenshot_after: Optional[str]
     notes: Optional[str]
+    trade_plan_id: Optional[str]
 
     @classmethod
     def from_domain(cls, trade: Trade) -> TradeResponse:
@@ -260,4 +262,5 @@ class TradeResponse(BaseModel):
             screenshot_during=trade.screenshot_during,
             screenshot_after=trade.screenshot_after,
             notes=trade.notes,
+            trade_plan_id=trade.trade_plan_id,
         )

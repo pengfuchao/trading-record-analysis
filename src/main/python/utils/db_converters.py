@@ -77,6 +77,7 @@ def trade_to_orm(trade: Trade, import_run_id: str = None) -> TradeModel:
         screenshot_after=trade.screenshot_after,
         notes=trade.notes,
         import_run_id=import_run_id,
+        trade_plan_id=trade.trade_plan_id,
     )
 
 
@@ -146,6 +147,7 @@ def orm_to_trade(orm: TradeModel) -> Trade:
         screenshot_during=orm.screenshot_during,
         screenshot_after=orm.screenshot_after,
         notes=orm.notes,
+        trade_plan_id=orm.trade_plan_id,
     )
 
 

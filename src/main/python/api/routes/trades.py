@@ -146,6 +146,9 @@ def update_trade(
     trade_repo = get_trade_repo(db)
     existing = _require_trade(trade_id, account_id, trade_repo)
     update_data = body.model_dump(exclude_none=True)
+    # Empty string for trade_plan_id means "unlink" — treat as explicit None
+    if "trade_plan_id" in update_data and update_data["trade_plan_id"] == "":
+        update_data["trade_plan_id"] = None
     updated = dataclasses.replace(existing, **update_data)
     # Recompute R when stop_loss is explicitly provided in the update
     if "stop_loss" in update_data:

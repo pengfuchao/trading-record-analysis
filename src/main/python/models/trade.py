@@ -95,3 +95,6 @@ class Trade:
     screenshot_during: Optional[str] = None
     screenshot_after: Optional[str] = None
     notes: Optional[str] = None
+
+    # Plan linking
+    trade_plan_id: Optional[str] = None
