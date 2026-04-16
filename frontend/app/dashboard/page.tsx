@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import useSWR from "swr";
+import useSWR, { mutate as globalMutate } from "swr";
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { api, FtmoStatus } from "@/lib/api";
+import { api, Account, FtmoStatus } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import StatCard from "@/components/StatCard";
@@ -102,6 +102,150 @@ function DrawdownChart({ drawdown, dates }: { drawdown: number[]; dates: string[
         />
       </AreaChart>
     </ResponsiveContainer>
+  );
+}
+
+// ── Edit account modal ────────────────────────────────────────────────────────
+
+function EditAccountModal({
+  account,
+  onClose,
+  onSaved,
+}: {
+  account: Account;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [broker, setBroker] = useState(account.broker);
+  const [currency, setCurrency] = useState(account.account_currency);
+  const [platform, setPlatform] = useState(account.platform);
+  const [startingBalance, setStartingBalance] = useState(
+    account.starting_balance != null ? String(account.starting_balance) : ""
+  );
+  const [propFirm, setPropFirm] = useState(account.prop_firm ?? "");
+  const [challengePhase, setChallengePhase] = useState(account.challenge_phase ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const body: Record<string, unknown> = {};
+      if (broker.trim()) body.broker = broker.trim();
+      if (currency.trim()) body.account_currency = currency.trim().toUpperCase();
+      if (platform) body.platform = platform;
+      const bal = parseFloat(startingBalance);
+      if (startingBalance.trim() !== "" && !isNaN(bal)) body.starting_balance = bal;
+      // prop_firm: send always so empty string clears it
+      body.prop_firm = propFirm.trim() || null;
+      if (challengePhase) body.challenge_phase = challengePhase;
+
+      await api.updateAccount(account.account_id, body as Partial<Account>);
+      onSaved();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputCls = "w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-blue-500";
+  const labelCls = "block text-xs text-gray-500 uppercase tracking-wider mb-0.5";
+
+  return (
+    /* Backdrop */
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-gray-950 border border-gray-700 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-100">Edit Account</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-lg leading-none">✕</button>
+        </div>
+
+        <p className="text-xs text-gray-500 -mt-2">
+          Account ID: <span className="font-mono text-gray-400">{account.account_id}</span>
+        </p>
+
+        {/* Fields */}
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Starting Balance</label>
+            <input
+              type="number"
+              step="0.01"
+              value={startingBalance}
+              onChange={(e) => setStartingBalance(e.target.value)}
+              placeholder="e.g. 10000"
+              className={inputCls}
+            />
+            <p className="text-xs text-gray-600 mt-0.5">Required for FTMO panel and Total Return %</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Broker</label>
+              <input value={broker} onChange={(e) => setBroker(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Currency</label>
+              <input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="USD" className={inputCls} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Platform</label>
+              <select value={platform} onChange={(e) => setPlatform(e.target.value)} className={inputCls}>
+                <option value="MT4">MT4</option>
+                <option value="MT5">MT5</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Challenge Phase</label>
+              <select value={challengePhase} onChange={(e) => setChallengePhase(e.target.value)} className={inputCls}>
+                <option value="">— unset —</option>
+                <option value="Phase1">Phase 1</option>
+                <option value="Phase2">Phase 2</option>
+                <option value="Funded">Funded</option>
+                <option value="Live">Live</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Prop Firm</label>
+            <input value={propFirm} onChange={(e) => setPropFirm(e.target.value)} placeholder="e.g. FTMO" className={inputCls} />
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-900/40 border border-red-700 text-red-300 text-xs px-3 py-2 rounded">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3 pt-1">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
+          >
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 rounded transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -279,11 +423,24 @@ function nDaysAgoISO(n: number) {
 // ── Main dashboard ─────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { accountId } = useAccount();
+  const { accountId, accounts } = useAccount();
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [dailyLimitPct, setDailyLimitPct] = useState("5");
   const [maxLimitPct, setMaxLimitPct] = useState("10");
+  const [showEditAccount, setShowEditAccount] = useState(false);
+
+  const currentAccount = accounts.find((a) => a.account_id === accountId) ?? null;
+
+  function handleAccountSaved() {
+    setShowEditAccount(false);
+    // Refresh account list (selector + any account-dependent display)
+    globalMutate("accounts");
+    // Refresh analytics — starting_balance change affects total return %, current balance
+    globalMutate((k: unknown) => typeof k === "string" && k.startsWith(`analytics-${accountId}`));
+    // Refresh FTMO — starting_balance change affects all limit calculations
+    globalMutate((k: unknown) => typeof k === "string" && k.startsWith(`ftmo-${accountId}`));
+  }
 
   const { data: analytics, isLoading } = useSWR(
     accountId ? `analytics-${accountId}-${fromDate}-${toDate}` : null,
@@ -312,9 +469,29 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Edit account modal */}
+      {showEditAccount && currentAccount && (
+        <EditAccountModal
+          account={currentAccount}
+          onClose={() => setShowEditAccount(false)}
+          onSaved={handleAccountSaved}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Account Dashboard</h1>
-        <AccountSelector />
+        <div className="flex items-center gap-2">
+          <AccountSelector />
+          {accountId && (
+            <button
+              onClick={() => setShowEditAccount(true)}
+              title="Edit account settings"
+              className="text-gray-500 hover:text-gray-300 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs transition-colors"
+            >
+              ⚙
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Date range filter */}

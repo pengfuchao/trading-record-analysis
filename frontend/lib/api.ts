@@ -39,6 +39,11 @@ export const api = {
   // Accounts
   getAccount: (id: string) => request<Account>(`/accounts/${id}`),
   listAccounts: () => request<Account[]>("/accounts"),
+  updateAccount: (accountId: string, body: Partial<Account>) =>
+    request<Account>(`/accounts/${accountId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 
   // Trades
   listTrades: (accountId: string, params?: TradeFilters) => {
