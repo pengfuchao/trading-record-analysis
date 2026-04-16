@@ -261,11 +261,15 @@ class MT5Connector:
             exit_time = datetime.utcfromtimestamp(last_out.time)
             exit_price = last_out.price
 
-            # Entry from IN deal
+            # Entry from IN deal.
+            # NOTE: sl/tp are NOT fields on TradeDeal (history_deals_get) — they live on
+            # TradeOrder (history_orders_get). Fetching the matching order would require
+            # a second API call keyed on in_deal.order; deferred to Phase 2. Until then,
+            # sl/tp are None for all MT5-synced trades (same as CSV imports without those cols).
             entry_time = datetime.utcfromtimestamp(in_deal.time)
             entry_price = in_deal.price
-            sl = in_deal.sl if in_deal.sl != 0.0 else None
-            tp = in_deal.tp if in_deal.tp != 0.0 else None
+            sl = getattr(in_deal, "sl", 0.0) or None   # 0.0 → None; missing attr → None
+            tp = getattr(in_deal, "tp", 0.0) or None   # 0.0 → None; missing attr → None
 
             positions.append({
                 "position_id":  pos_id,
