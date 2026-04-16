@@ -54,6 +54,28 @@ function TextArea({ label, value, onChange, placeholder }: {
   );
 }
 
+function SetupTypeInput({ value, onChange, setupNames }: {
+  value: string; onChange: (v: string) => void; setupNames: string[];
+}) {
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 uppercase tracking-wider mb-0.5">Setup Type</label>
+      <input
+        list="setup-type-options"
+        className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="e.g. OB Retest"
+      />
+      <datalist id="setup-type-options">
+        {setupNames.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+    </div>
+  );
+}
+
 function SelectInput({ label, value, onChange, options }: {
   label: string; value: string; onChange: (v: string) => void;
   options: { value: string; label: string }[];
@@ -161,7 +183,7 @@ function editToPatch(state: EditState): Partial<Trade> {
   }
 
   // String fields: always send so empty string clears the stored value
-  patch.setup_type = state.setup_type;
+  patch.setup_type = state.setup_type.trim();
   patch.strategy = state.strategy;
   patch.session = state.session;
   patch.higher_tf_bias = state.higher_tf_bias;
@@ -203,6 +225,10 @@ export default function TradeDetailPage({ params }: { params: Promise<{ tradeId:
     swrKey,
     () => api.getTrade(accountId, tradeId)
   );
+
+  // Setup names for autocomplete — fetched once, cached globally
+  const { data: setups = [] } = useSWR("setups", () => api.listSetups());
+  const setupNames = setups.map((s) => s.name);
 
   // Load linked plan if trade has one
   const { data: linkedPlan } = useSWR(
@@ -348,7 +374,7 @@ export default function TradeDetailPage({ params }: { params: Promise<{ tradeId:
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Strategy & Context</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <TextInput label="Setup Type" value={editState.setup_type} onChange={(v) => set("setup_type", v)} placeholder="e.g. OB Retest" />
+              <SetupTypeInput value={editState.setup_type} onChange={(v) => set("setup_type", v)} setupNames={setupNames} />
               <TextInput label="Strategy" value={editState.strategy} onChange={(v) => set("strategy", v)} placeholder="e.g. SMC" />
               <SelectInput
                 label="Session"
