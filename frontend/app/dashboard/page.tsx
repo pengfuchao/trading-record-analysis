@@ -6,7 +6,7 @@ import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { api } from "@/lib/api";
+import { api, FtmoStatus } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import StatCard from "@/components/StatCard";
@@ -105,6 +105,165 @@ function DrawdownChart({ drawdown, dates }: { drawdown: number[]; dates: string[
   );
 }
 
+// ── FTMO status helpers ────────────────────────────────────────────────────────
+
+const STATUS_STYLES = {
+  SAFE:    { text: "text-green-400",  bar: "bg-green-500",  badge: "bg-green-900/40 border border-green-700 text-green-300" },
+  AT_RISK: { text: "text-yellow-400", bar: "bg-yellow-500", badge: "bg-yellow-900/40 border border-yellow-700 text-yellow-300" },
+  BREACHED:{ text: "text-red-400",    bar: "bg-red-500",    badge: "bg-red-900/40 border border-red-700 text-red-300" },
+  UNKNOWN: { text: "text-gray-400",   bar: "bg-gray-500",   badge: "bg-gray-700/40 border border-gray-600 text-gray-400" },
+} as const;
+type StatusKey = keyof typeof STATUS_STYLES;
+
+function statusStyle(s: string) {
+  return STATUS_STYLES[(s as StatusKey) in STATUS_STYLES ? (s as StatusKey) : "UNKNOWN"];
+}
+
+function clamp01(v: number) { return Math.min(1, Math.max(0, v)); }
+
+function FtmoBar({ fraction, status }: { fraction: number; status: string }) {
+  const pct = clamp01(fraction) * 100;
+  const style = statusStyle(status);
+  return (
+    <div className="w-full bg-gray-700 rounded-full h-1.5 mt-1.5">
+      <div className={`h-1.5 rounded-full transition-all ${style.bar}`} style={{ width: `${pct.toFixed(1)}%` }} />
+    </div>
+  );
+}
+
+function FtmoPanel({
+  ftmo,
+  dailyLimitPct,
+  maxLimitPct,
+  onDailyLimit,
+  onMaxLimit,
+}: {
+  ftmo: FtmoStatus;
+  dailyLimitPct: string;
+  maxLimitPct: string;
+  onDailyLimit: (v: string) => void;
+  onMaxLimit: (v: string) => void;
+}) {
+  const accountStyle = statusStyle(ftmo.account_status);
+
+  // Daily loss progress: how much of the limit has been consumed
+  const dailyUsedPct = Math.max(0, ftmo.daily_loss_used_pct ?? 0);
+  const dailyFraction = ftmo.daily_loss_limit_pct > 0
+    ? dailyUsedPct / ftmo.daily_loss_limit_pct
+    : 0;
+
+  // Overall drawdown progress
+  const overallUsedPct = Math.abs(ftmo.current_max_drawdown_pct ?? 0);
+  const overallFraction = ftmo.max_loss_limit_pct > 0
+    ? overallUsedPct / ftmo.max_loss_limit_pct
+    : 0;
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-4">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className={`text-sm font-medium ${accountStyle.text}`}>
+            Account: {ftmo.account_status}
+          </span>
+          {ftmo.daily_status !== ftmo.account_status && (
+            <span className="text-xs text-gray-500">Daily: {ftmo.daily_status}</span>
+          )}
+          {ftmo.overall_status !== ftmo.account_status && (
+            <span className="text-xs text-gray-500">Overall: {ftmo.overall_status}</span>
+          )}
+        </div>
+        {/* Limit settings */}
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <label>Daily</label>
+          <input
+            type="number"
+            min="0.1" max="20" step="0.5"
+            value={dailyLimitPct}
+            onChange={(e) => onDailyLimit(e.target.value)}
+            className="w-14 bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-gray-100 focus:outline-none focus:border-blue-500 text-xs"
+          />
+          <span>%</span>
+          <label className="ml-2">Max</label>
+          <input
+            type="number"
+            min="0.1" max="30" step="0.5"
+            value={maxLimitPct}
+            onChange={(e) => onMaxLimit(e.target.value)}
+            className="w-14 bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-gray-100 focus:outline-none focus:border-blue-500 text-xs"
+          />
+          <span>%</span>
+        </div>
+      </div>
+
+      {/* Two-column metrics */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Daily loss */}
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Daily Loss</p>
+          <div className="space-y-1">
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs text-gray-400">Today</span>
+              <span className={`text-sm font-mono ${ftmo.today_pnl < 0 ? "text-red-400" : "text-green-400"}`}>
+                {fmtPnl(ftmo.today_pnl)}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs text-gray-500">Limit</span>
+              <span className="text-xs text-gray-400">
+                {ftmo.daily_loss_limit_pct}%
+                {ftmo.daily_loss_limit_abs != null && ` (${fmtPnl(ftmo.daily_loss_limit_abs)})`}
+              </span>
+            </div>
+            <FtmoBar fraction={dailyFraction} status={ftmo.daily_status} />
+            <div className="flex items-baseline justify-between">
+              <span className={`text-xs ${statusStyle(ftmo.daily_status).text}`}>
+                {(dailyUsedPct).toFixed(2)}% used
+              </span>
+              {ftmo.daily_loss_remaining != null && (
+                <span className="text-xs text-gray-500">
+                  {fmtPnl(ftmo.daily_loss_remaining)} left
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Overall drawdown */}
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Max Drawdown</p>
+          <div className="space-y-1">
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs text-gray-400">Current DD</span>
+              <span className={`text-sm font-mono ${(ftmo.current_max_drawdown ?? 0) < 0 ? "text-red-400" : "text-gray-400"}`}>
+                {ftmo.current_max_drawdown != null ? fmtPnl(ftmo.current_max_drawdown) : "—"}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs text-gray-500">Limit</span>
+              <span className="text-xs text-gray-400">
+                {ftmo.max_loss_limit_pct}%
+                {ftmo.max_loss_limit_abs != null && ` (${fmtPnl(ftmo.max_loss_limit_abs)})`}
+              </span>
+            </div>
+            <FtmoBar fraction={overallFraction} status={ftmo.overall_status} />
+            <div className="flex items-baseline justify-between">
+              <span className={`text-xs ${statusStyle(ftmo.overall_status).text}`}>
+                {overallUsedPct.toFixed(2)}% used
+              </span>
+              {ftmo.max_loss_remaining != null && (
+                <span className="text-xs text-gray-500">
+                  {fmtPnl(ftmo.max_loss_remaining)} left
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Date helpers ───────────────────────────────────────────────────────────────
 
 function todayISO() {
@@ -123,6 +282,8 @@ export default function DashboardPage() {
   const { accountId } = useAccount();
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [dailyLimitPct, setDailyLimitPct] = useState("5");
+  const [maxLimitPct, setMaxLimitPct] = useState("10");
 
   const { data: analytics, isLoading } = useSWR(
     accountId ? `analytics-${accountId}-${fromDate}-${toDate}` : null,
@@ -131,6 +292,14 @@ export default function DashboardPage() {
       to_date: toDate || undefined,
     })
   );
+  const { data: ftmo } = useSWR(
+    accountId ? `ftmo-${accountId}-${dailyLimitPct}-${maxLimitPct}` : null,
+    () => api.getFtmoStatus(accountId, {
+      daily_loss_limit_pct: parseFloat(dailyLimitPct) || 5,
+      max_loss_limit_pct: parseFloat(maxLimitPct) || 10,
+    })
+  );
+
   const { data: mistakes } = useSWR(
     accountId ? `mistakes-${accountId}-${fromDate}-${toDate}` : null,
     () => api.getMistakes(accountId, {
@@ -213,6 +382,20 @@ export default function DashboardPage() {
               />
             </div>
           </section>
+
+          {/* ── FTMO status ───────────────────────────────────────────────────── */}
+          {analytics.starting_balance != null && ftmo && (
+            <section>
+              <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">FTMO Challenge Status</h2>
+              <FtmoPanel
+                ftmo={ftmo}
+                dailyLimitPct={dailyLimitPct}
+                maxLimitPct={maxLimitPct}
+                onDailyLimit={setDailyLimitPct}
+                onMaxLimit={setMaxLimitPct}
+              />
+            </section>
+          )}
 
           {/* ── Equity curve ──────────────────────────────────────────────────── */}
           {hasEquity && (

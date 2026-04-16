@@ -100,6 +100,19 @@ export const api = {
     return request<AccountAnalytics>(`/accounts/${accountId}/analytics${qs ? `?${qs}` : ""}`);
   },
 
+  // FTMO / prop firm status
+  getFtmoStatus: (
+    accountId: string,
+    params?: { daily_loss_limit_pct?: number; max_loss_limit_pct?: number; broker_utc_offset?: number }
+  ) => {
+    const q = new URLSearchParams();
+    if (params?.daily_loss_limit_pct != null) q.set("daily_loss_limit_pct", String(params.daily_loss_limit_pct));
+    if (params?.max_loss_limit_pct != null) q.set("max_loss_limit_pct", String(params.max_loss_limit_pct));
+    if (params?.broker_utc_offset != null) q.set("broker_utc_offset", String(params.broker_utc_offset));
+    const qs = q.toString();
+    return request<FtmoStatus>(`/accounts/${accountId}/ftmo-status${qs ? `?${qs}` : ""}`);
+  },
+
   // Mistakes
   getMistakes: (accountId: string, params?: DateRange) => {
     const q = new URLSearchParams();
@@ -342,6 +355,37 @@ export interface AccountAnalytics {
   equity_curve: number[];
   drawdown_curve: number[];
   trade_dates: string[];
+}
+
+export interface FtmoStatus {
+  account_id: string;
+  generated_at: string;
+
+  // Account state
+  starting_balance?: number;
+  estimated_current_balance?: number;
+  total_net_pnl?: number;
+  total_return_pct?: number;
+
+  // Daily loss
+  today_date: string;
+  today_pnl: number;
+  daily_loss_limit_pct: number;           // configured limit e.g. 5.0
+  daily_loss_limit_abs?: number;          // limit in $
+  daily_loss_used_pct?: number;           // |today_pnl| / starting_balance * 100
+  daily_loss_remaining?: number;          // $ remaining before breach
+
+  // Overall drawdown
+  max_loss_limit_pct: number;             // configured limit e.g. 10.0
+  max_loss_limit_abs?: number;            // limit in $
+  current_max_drawdown?: number;          // absolute $ drawdown from peak
+  current_max_drawdown_pct?: number;      // as % of starting_balance (positive number)
+  max_loss_remaining?: number;            // $ remaining before breach
+
+  // Status
+  daily_status: string;                   // SAFE | AT_RISK | BREACHED | UNKNOWN
+  overall_status: string;
+  account_status: string;                 // worst of daily/overall
 }
 
 export interface MistakeStats {
