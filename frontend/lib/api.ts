@@ -152,6 +152,8 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  deletePlan: (accountId: string, planId: string) =>
+    request<void>(`/accounts/${accountId}/daily-plans/${planId}`, { method: "DELETE" }),
 
   // Trade Plans
   listTradePlans: (accountId: string, status?: string) => {
@@ -197,6 +199,8 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  deleteReview: (accountId: string, reviewId: string) =>
+    request<void>(`/accounts/${accountId}/daily-reviews/${reviewId}`, { method: "DELETE" }),
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────────
