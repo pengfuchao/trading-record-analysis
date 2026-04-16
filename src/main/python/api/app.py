@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.main.python.api.routes import accounts, analytics, coaching, imports, mistakes, setups, trades
 from src.main.python.api.routes.daily_plans import plans_router, reviews_router
+from src.main.python.api.routes.mt5_sync import router as mt5_sync_router
 from src.main.python.api.routes.trade_plans import router as trade_plans_router
 
 
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(reviews_router,            prefix="/api/v1")
     app.include_router(coaching.router,            prefix="/api/v1")
     app.include_router(trade_plans_router,         prefix="/api/v1")
+    app.include_router(mt5_sync_router,            prefix="/api/v1")
 
     return app
 

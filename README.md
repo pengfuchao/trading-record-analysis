@@ -29,6 +29,7 @@ A full-stack web app that gives you a structured way to:
 | Daily post-market reviews: create / edit / delete | Done |
 | AI coaching (weekly review via Claude API, rule-based fallback) | Done |
 | Coaching review history | Done |
+| MT5 live sync — Phase 1 (manual trigger, config CRUD, audit log) | Done (backend only) |
 
 ## Tech Stack
 
@@ -99,7 +100,8 @@ npm run dev
 
 ## Current Limitations
 
-- No live MT5/MT4 connection — import is CSV-only; live sync is not yet implemented
+- MT5 live sync is backend-only in Phase 1 — no frontend UI yet; use `POST /api/v1/accounts/{id}/mt5-sync` directly. Requires Windows with MetaTrader5 installed.
+- MT5 password is stored in `.env` only, never in the database
 - No authentication — the app is single-user, designed for local/personal use
 - No chart screenshot attachments — image upload is not yet implemented
 - Trade log pagination not implemented — may be slow with 500+ trades

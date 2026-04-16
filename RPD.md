@@ -80,20 +80,36 @@ These modules are **documented but not yet implemented**. They represent the pla
 
 **Purpose:** Replace manual CSV upload with automatic background sync from MetaTrader 5.
 
-**What it involves:**
-- A background sync service (Python, runs locally or as a sidecar)
-- Uses the `MetaTrader5` Python package (`mt5.history_deals_get()`, `mt5.positions_get()`, `mt5.account_info()`)
-- Periodic sync: closed deals → trade records, open positions → open trade state, account info → balance/equity
-- Incremental sync: track last-synced timestamp to avoid full re-import on every cycle
-- Sync cadence: configurable (e.g., every 5 minutes for open positions, every 15 minutes for closed trades)
-- Stores sync status per account: `last_synced_at`, `sync_status`, `sync_error`
+#### Phase 1 — Manual Trigger (IMPLEMENTED 2026-04-16)
+
+Backend-only. No frontend UI yet. Phase 1 delivers:
+
+- `MT5SyncConfigModel` + `MT5SyncRunModel` DB tables (migration 006)
+- `MT5Connector` — context manager that owns MT5 terminal lifecycle (`mt5.initialize` / `mt5.login` / `mt5.shutdown`); Windows-only with graceful degradation on Linux/Mac
+- `MT5SyncService` — orchestrates fetch → normalize → upsert using existing `save_batch_import(duplicate_strategy="update_broker")` and `DerivedFieldCalculator`; all manual enrichment (notes, flags, setup_type) is preserved
+- 4 REST endpoints: `POST /mt5-config`, `GET /mt5-config`, `POST /mt5-sync` (manual trigger), `GET /mt5-sync/status`
+- Password convention: `MT5_<ACCOUNT_ID_UPPER>_PASSWORD` env var — never stored in DB
+- Audit log: every sync run is recorded with status, counts, and error message
+
+**Constraints:**
+- Requires Windows machine with MetaTrader5 Python package installed (`pip install MetaTrader5`)
+- App starts normally on Linux/Mac without the package (sync returns error if triggered)
+- Phase 1 is synchronous — HTTP request blocks until sync completes
+
+#### Phase 2 — Scheduled Background Polling (DEFERRED)
+
+- APScheduler periodic background sync (closed trades + open positions)
+- `polling_interval_minutes` DB column already exists as placeholder — no migration needed
+- Open position tracking (`mt5.positions_get()`) — needs separate schema design
+- DEAL_ENTRY_INOUT (partial closes/hedges) handling
+- Frontend UI: sync config page, manual trigger button, sync status indicator
 
 **Why MT5 first, not MT4:**
 - MT5 has a clean Python package with official support
 - MT4 requires a bridge (EA/DLL) or file-based export — significantly more fragile
 - Most modern prop firm accounts run on MT5
 
-**Frontend impact:**
+**Frontend impact (Phase 2):**
 - Dashboard/FTMO panel would auto-reflect without manual import
 - Import page becomes optional ("manual override") rather than primary workflow
 - Add a "Sync status" indicator to account selector or dashboard header
@@ -205,11 +221,17 @@ Next batch (Refinements)
   ├── Per-symbol/session analytics
   └── broker_utc_offset UI configuration
 
-Expansion Phase 1
-  └── MT5 live sync
-        - background sync service
-        - sync status per account
-        - dashboard auto-refresh
+Expansion Phase 1 (DONE — backend only)
+  └── MT5 live sync Phase 1
+        - MT5Connector + MT5SyncService
+        - manual trigger API endpoint
+        - sync audit log
+
+Expansion Phase 1b (NEXT)
+  └── MT5 live sync Phase 2
+        - background scheduler (APScheduler)
+        - open position tracking
+        - frontend sync UI
 
 Expansion Phase 2
   └── Telegram notifications (push-only)
@@ -251,7 +273,7 @@ Later
 
 | Constraint | Notes |
 |---|---|
-| No MT5 live connection today | Import is CSV-only. Daily loss accuracy depends on the last import time. |
+| MT5 live sync is Phase 1 only (backend, manual trigger) | Phase 1 sync is backend-only; use `POST /api/v1/accounts/{id}/mt5-sync`. Requires Windows + MetaTrader5 package. Phase 2 (scheduled, frontend UI) is deferred. |
 | No authentication | Single-user local deployment. Do not expose to public internet without adding auth. |
 | Coaching quality depends on trade data quality | Sparse trades or missing setup_type values reduce coaching signal. |
 | MT4 live sync path is fragile | EA-based bridges are platform-version-sensitive and hard to maintain. |

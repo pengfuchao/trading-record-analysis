@@ -1,0 +1,272 @@
+"""
+MT5SyncService — orchestrates a live MT5 sync run.
+
+Flow:
+  1. Record a "running" sync run in mt5_sync_runs
+  2. Open MT5Connector → fetch deals → reconstruct closed positions
+  3. Normalize positions into Trade domain objects using DerivedFieldCalculator
+     (same derived fields computed by the CSV import pipeline)
+  4. Upsert via TradeRepository.save_batch_import(duplicate_strategy="update_broker")
+     — broker-sourced fields are refreshed; all manual enrichment is preserved
+  5. Update the run record to "success" or "error"
+  6. Return SyncResult
+
+Reuses:
+  - DerivedFieldCalculator (all methods — no changes needed)
+  - TradeRepository.save_batch_import + _BROKER_FIELDS (no changes needed)
+  - Asset class rules from mt_column_map.yaml (same as CSV parser)
+"""
+from __future__ import annotations
+
+import logging
+import os
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from src.main.python.models.db_models import MT5SyncConfigModel, MT5SyncRunModel
+from src.main.python.models.enums import Direction, Platform
+from src.main.python.models.trade import Trade
+from src.main.python.services.derived_field_calculator import DerivedFieldCalculator
+from src.main.python.services.mt5_connector import MT5ConnectionConfig, MT5ConnectionError, MT5Connector
+from src.main.python.services.trade_repository import TradeRepository
+from src.main.python.utils.config_loader import get_app_config, load_yaml
+
+logger = logging.getLogger(__name__)
+
+_calc = DerivedFieldCalculator()
+
+
+# ── Result dataclass ───────────────────────────────────────────────────────────
+
+@dataclass
+class SyncResult:
+    run_id: str
+    account_id: str
+    status: str                     # "success" | "error"
+    deals_fetched: int = 0
+    positions_built: int = 0
+    trades_new: int = 0
+    trades_updated: int = 0
+    trades_skipped: int = 0
+    error_message: Optional[str] = None
+    started_at: datetime = field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
+
+
+# ── Service ────────────────────────────────────────────────────────────────────
+
+class MT5SyncService:
+    """
+    Orchestrates MT5 live sync for a single account.
+    Caller provides and owns the SQLAlchemy session — this service does not commit.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self._trade_repo = TradeRepository(session)
+
+        # Load asset class rules once — same source the CSV parser uses
+        config = get_app_config()
+        column_map_path: str = config["paths"]["mt_column_map"]
+        self._asset_class_rules: dict = load_yaml(column_map_path).get("asset_class_rules", {})
+
+    # ── Config helpers ─────────────────────────────────────────────────────────
+
+    def get_config(self, account_id: str) -> Optional[MT5SyncConfigModel]:
+        """Return the MT5 sync config for an account, or None if not configured."""
+        return self._session.get(MT5SyncConfigModel, account_id)
+
+    def save_config(self, account_id: str, data: Dict[str, Any]) -> MT5SyncConfigModel:
+        """
+        Create or update the MT5 sync config for an account.
+        Password is intentionally NOT part of data — it lives in .env.
+        """
+        existing = self._session.get(MT5SyncConfigModel, account_id)
+        if existing is None:
+            obj = MT5SyncConfigModel(account_id=account_id, **data)
+            self._session.add(obj)
+        else:
+            for k, v in data.items():
+                setattr(existing, k, v)
+            obj = existing
+        self._session.flush()
+        return obj
+
+    def get_recent_runs(self, account_id: str, limit: int = 5) -> List[MT5SyncRunModel]:
+        """Return the most recent sync runs for an account, newest first."""
+        stmt = (
+            select(MT5SyncRunModel)
+            .where(MT5SyncRunModel.account_id == account_id)
+            .order_by(MT5SyncRunModel.started_at.desc())
+            .limit(limit)
+        )
+        return list(self._session.execute(stmt).scalars().all())
+
+    # ── Sync orchestration ─────────────────────────────────────────────────────
+
+    def sync_account(
+        self,
+        account_id: str,
+        config: MT5ConnectionConfig,
+        from_date: datetime,
+        to_date: datetime,
+        triggered_by: str = "manual",
+    ) -> SyncResult:
+        """
+        Run a full sync: connect → fetch → normalize → upsert.
+
+        This is synchronous and blocks the caller until complete.
+        All exceptions are caught, recorded in the run log, and surfaced as SyncResult.status="error".
+        The caller's session is NOT committed here — that remains the caller's responsibility.
+        """
+        run_id = str(uuid.uuid4())
+        started_at = datetime.utcnow()
+
+        # Record the run as "running" before we start
+        run_row = MT5SyncRunModel(
+            run_id=run_id,
+            account_id=account_id,
+            triggered_by=triggered_by,
+            started_at=started_at,
+            status="running",
+            from_date=from_date,
+            to_date=to_date,
+        )
+        self._session.add(run_row)
+        self._session.flush()
+
+        result = SyncResult(
+            run_id=run_id,
+            account_id=account_id,
+            status="error",
+            started_at=started_at,
+        )
+
+        try:
+            with MT5Connector(config) as conn:
+                # Fetch raw deals
+                deals = conn.fetch_deals(from_date, to_date)
+                result.deals_fetched = len(deals)
+
+                # Reconstruct closed positions from deal groups
+                positions = conn.reconstruct_positions(deals)
+                result.positions_built = len(positions)
+
+                # Normalize to Trade domain objects
+                trades = self._normalize_positions(account_id, run_id, positions, config)
+
+                # Upsert via existing import infrastructure
+                counts = self._trade_repo.save_batch_import(
+                    trades,
+                    import_run_id=run_id,
+                    duplicate_strategy="update_broker",
+                )
+
+            result.trades_new = counts.new
+            result.trades_updated = counts.updated
+            result.trades_skipped = counts.skipped
+            result.status = "success"
+
+            logger.info(
+                "MT5 sync complete run=%s account=%s new=%d updated=%d skipped=%d",
+                run_id, account_id, counts.new, counts.updated, counts.skipped,
+            )
+
+        except (MT5ConnectionError, Exception) as exc:
+            result.error_message = str(exc)
+            result.status = "error"
+            logger.error(
+                "MT5 sync failed run=%s account=%s error=%s",
+                run_id, account_id, exc, exc_info=True,
+            )
+
+        finally:
+            result.completed_at = datetime.utcnow()
+            # Update the run row regardless of success/failure
+            run_row.status = result.status
+            run_row.completed_at = result.completed_at
+            run_row.deals_fetched = result.deals_fetched
+            run_row.positions_built = result.positions_built
+            run_row.trades_new = result.trades_new
+            run_row.trades_updated = result.trades_updated
+            run_row.trades_skipped = result.trades_skipped
+            run_row.error_message = result.error_message
+            self._session.flush()
+
+        return result
+
+    # ── Normalization ──────────────────────────────────────────────────────────
+
+    def _normalize_positions(
+        self,
+        account_id: str,
+        run_id: str,
+        positions: List[Dict[str, Any]],
+        config: MT5ConnectionConfig,
+    ) -> List[Trade]:
+        """
+        Convert reconstructed MT5 position dicts into Trade domain objects.
+        Uses the same DerivedFieldCalculator methods as the CSV import pipeline.
+        """
+        trades: List[Trade] = []
+
+        for pos in positions:
+            direction = _calc.calc_direction(pos["raw_type"])
+            gross_pnl = pos.get("gross_profit")
+            commission = pos.get("commission")
+            swap = pos.get("swap")
+            net_pnl = _calc.calc_net_pnl(gross_pnl, commission, swap)
+            result_enum = _calc.calc_result(net_pnl, gross_pnl)
+            entry_dt: Optional[datetime] = pos.get("entry_time")
+            exit_dt: Optional[datetime] = pos.get("exit_time")
+            entry_price = pos.get("entry_price")
+            exit_price = pos.get("exit_price")
+            sl = pos.get("sl")
+
+            trade = Trade(
+                trade_id=str(pos["position_id"]),
+                account_id=account_id,
+                platform=Platform.MT5,
+                symbol=pos.get("symbol"),
+                raw_trade_type=pos.get("raw_type"),
+                direction=direction,
+                asset_class=_calc.calc_asset_class(pos.get("symbol"), self._asset_class_rules),
+                entry_datetime=entry_dt,
+                exit_datetime=exit_dt,
+                holding_duration=_calc.calc_holding_duration(entry_dt, exit_dt),
+                entry_price=entry_price,
+                exit_price=exit_price,
+                stop_loss=sl,
+                take_profit=pos.get("tp"),
+                lot_size=pos.get("volume"),
+                gross_pnl=gross_pnl,
+                commission=commission,
+                swap=swap,
+                net_pnl=net_pnl,
+                actual_r_multiple=_calc.calc_actual_r(exit_price, entry_price, sl, direction),
+                result=result_enum,
+                session=_calc.calc_session(entry_dt, utc_offset=config.broker_utc_offset),
+                magic=pos.get("magic"),
+                comment=pos.get("comment") or "",
+            )
+            trades.append(trade)
+
+        return trades
+
+
+# ── Password loader helper ─────────────────────────────────────────────────────
+
+def load_mt5_password(account_id: str) -> Optional[str]:
+    """
+    Load the MT5 password for an account from the environment.
+
+    Convention: MT5_<ACCOUNT_ID_UPPER_UNDERSCORED>_PASSWORD
+    Example: account "ftmo-p1" → env var "MT5_FTMO_P1_PASSWORD"
+    """
+    env_key = f"MT5_{account_id.upper().replace('-', '_').replace(' ', '_')}_PASSWORD"
+    return os.environ.get(env_key)

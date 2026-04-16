@@ -10,3 +10,6 @@ fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 python-multipart>=0.0.9
 anthropic>=0.40.0
+# MetaTrader5 is Windows-only; the app starts normally without it on Linux/Mac
+# Install on your Windows trading machine: pip install MetaTrader5>=5.0.45
+# MetaTrader5>=5.0.45

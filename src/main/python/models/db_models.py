@@ -339,3 +339,57 @@ class SetupDefinitionModel(Base):
         DateTime(timezone=False), nullable=False,
         server_default=func.now(), onupdate=func.now(),
     )
+
+
+# ── MT5 Live Sync ─────────────────────────────────────────────────────────────
+
+class MT5SyncConfigModel(Base):
+    """Per-account MT5 connection configuration. Password is stored in .env, never here."""
+    __tablename__ = "mt5_sync_configs"
+
+    account_id:               Mapped[str]            = mapped_column(
+        String(100),
+        ForeignKey("accounts.account_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    mt5_login:                Mapped[int]            = mapped_column(Integer,      nullable=False)
+    mt5_server:               Mapped[str]            = mapped_column(String(200),  nullable=False)
+    terminal_path:            Mapped[Optional[str]]  = mapped_column(String(500),  nullable=True)
+    broker_utc_offset:        Mapped[int]            = mapped_column(Integer,      nullable=False, default=2)
+    polling_interval_minutes: Mapped[int]            = mapped_column(Integer,      nullable=False, default=60)
+    enabled:                  Mapped[bool]           = mapped_column(Boolean,      nullable=False, default=True)
+    created_at:               Mapped[datetime]       = mapped_column(
+        DateTime(timezone=False), nullable=False, server_default=func.now()
+    )
+    updated_at:               Mapped[datetime]       = mapped_column(
+        DateTime(timezone=False), nullable=False,
+        server_default=func.now(), onupdate=func.now(),
+    )
+
+
+class MT5SyncRunModel(Base):
+    """Audit log: one row per sync attempt (manual or scheduled)."""
+    __tablename__ = "mt5_sync_runs"
+
+    run_id:          Mapped[str]            = mapped_column(String(100), primary_key=True)
+    account_id:      Mapped[str]            = mapped_column(
+        String(100),
+        ForeignKey("accounts.account_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    triggered_by:    Mapped[str]            = mapped_column(String(20),  nullable=False)  # "manual" | "scheduled"
+    started_at:      Mapped[datetime]       = mapped_column(DateTime(timezone=False), nullable=False)
+    completed_at:    Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    status:          Mapped[str]            = mapped_column(String(20),  nullable=False)  # "running" | "success" | "error"
+    from_date:       Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    to_date:         Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    deals_fetched:   Mapped[Optional[int]]  = mapped_column(Integer, nullable=True)
+    positions_built: Mapped[Optional[int]]  = mapped_column(Integer, nullable=True)
+    trades_new:      Mapped[Optional[int]]  = mapped_column(Integer, nullable=True)
+    trades_updated:  Mapped[Optional[int]]  = mapped_column(Integer, nullable=True)
+    trades_skipped:  Mapped[Optional[int]]  = mapped_column(Integer, nullable=True)
+    error_message:   Mapped[Optional[str]]  = mapped_column(Text,    nullable=True)
+
+    __table_args__ = (
+        Index("ix_mt5_sync_runs_account_started", "account_id", "started_at"),
+    )
