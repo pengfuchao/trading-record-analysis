@@ -454,7 +454,8 @@ export default function DashboardPage() {
     () => api.getFtmoStatus(accountId, {
       daily_loss_limit_pct: parseFloat(dailyLimitPct) || 5,
       max_loss_limit_pct: parseFloat(maxLimitPct) || 10,
-    })
+    }),
+    { refreshInterval: 60_000 }   // re-check FTMO limits every minute
   );
 
   const { data: mistakes } = useSWR(

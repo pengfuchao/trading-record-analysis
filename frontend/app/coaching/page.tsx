@@ -17,7 +17,7 @@ function isoWeekBounds(): { from: string; to: string } {
   return { from: fmt(mon), to: fmt(sun) };
 }
 
-function SourceBadge({ source, status }: { source: string; status: string }) {
+function SourceBadge({ source }: { source: string }) {
   if (source === "fallback") {
     return (
       <span className="text-xs bg-yellow-900/40 text-yellow-300 border border-yellow-700/50 px-2 py-0.5 rounded">
@@ -29,6 +29,22 @@ function SourceBadge({ source, status }: { source: string; status: string }) {
     <span className="text-xs bg-green-900/40 text-green-300 border border-green-700/50 px-2 py-0.5 rounded">
       AI generated
     </span>
+  );
+}
+
+function FallbackNotice() {
+  return (
+    <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg px-4 py-3 flex gap-3 items-start">
+      <span className="text-yellow-400 text-sm mt-0.5">⚠</span>
+      <div className="space-y-1">
+        <p className="text-yellow-300 text-sm font-medium">AI review unavailable — rule-based analysis used</p>
+        <p className="text-yellow-200/70 text-xs leading-relaxed">
+          This review was generated using rule-based pattern matching instead of the AI model.
+          The most likely cause is a missing or invalid <code className="font-mono bg-yellow-900/40 px-1 rounded">ANTHROPIC_API_KEY</code> on
+          the server. Set the key and regenerate to get a full AI-written review.
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -143,7 +159,7 @@ export default function CoachingPage() {
             <div className="space-y-4">
               {/* Metadata bar */}
               <div className="flex items-center gap-3 flex-wrap">
-                <SourceBadge source={review.source} status={review.status} />
+                <SourceBadge source={review.source} />
                 {reviewIsHistory && (
                   <span className="text-xs bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded">
                     From history
@@ -161,6 +177,7 @@ export default function CoachingPage() {
                   </button>
                 )}
               </div>
+              {review.source === "fallback" && <FallbackNotice />}
 
               {/* Summary */}
               <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
@@ -225,7 +242,7 @@ export default function CoachingPage() {
                             {r.from_date} – {r.to_date}
                           </span>
                         )}
-                        <SourceBadge source={r.source} status={r.status} />
+                        <SourceBadge source={r.source} />
                       </div>
                       <p className="text-xs text-gray-500 truncate">{r.summary_preview}</p>
                     </div>

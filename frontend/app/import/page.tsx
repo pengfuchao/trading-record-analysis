@@ -73,10 +73,12 @@ export default function ImportPage() {
       setResult(data);
       setStage("done");
       setIsImporting(false);
-      // Invalidate SWR caches so dashboard + trade log reflect new data
-      mutate(`trades-${accountId}`);
-      mutate(`analytics-${accountId}`);
-      mutate(`mistakes-${accountId}`);
+      // Invalidate all account-scoped SWR caches (keys include filter suffixes)
+      const pfx = (p: string) => (k: unknown) => typeof k === "string" && k.startsWith(p);
+      mutate(pfx(`trades-${accountId}`));
+      mutate(pfx(`analytics-${accountId}`));
+      mutate(pfx(`mistakes-${accountId}`));
+      mutate(pfx(`ftmo-${accountId}`));
     } catch (e: any) {
       setError(e.message ?? "Import failed");
       setStage("preview_ready");
@@ -92,9 +94,11 @@ export default function ImportPage() {
       setRecomputeResult(data);
       setRecomputeState("done");
       // Refresh caches — R values and session affect analytics and trade list
-      mutate(`trades-${accountId}`);
-      mutate(`analytics-${accountId}`);
-      mutate(`mistakes-${accountId}`);
+      const pfx = (p: string) => (k: unknown) => typeof k === "string" && k.startsWith(p);
+      mutate(pfx(`trades-${accountId}`));
+      mutate(pfx(`analytics-${accountId}`));
+      mutate(pfx(`mistakes-${accountId}`));
+      mutate(pfx(`ftmo-${accountId}`));
     } catch (e: any) {
       setError(e.message ?? "Recompute failed");
       setRecomputeState("error");
