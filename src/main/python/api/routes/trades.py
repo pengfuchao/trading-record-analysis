@@ -11,6 +11,7 @@ from src.main.python.api.dependencies import get_db, get_account_repo, get_trade
 from src.main.python.api.schemas.trade import TradeCreate, TradeResponse, TradeUpdate
 from src.main.python.models.trade import Trade
 from src.main.python.services.account_repository import AccountRepository
+from src.main.python.services.derived_field_calculator import DerivedFieldCalculator
 from src.main.python.services.trade_repository import TradeRepository
 
 router = APIRouter(prefix="/accounts", tags=["trades"])
@@ -146,6 +147,17 @@ def update_trade(
     existing = _require_trade(trade_id, account_id, trade_repo)
     update_data = body.model_dump(exclude_none=True)
     updated = dataclasses.replace(existing, **update_data)
+    # Recompute R when stop_loss is explicitly provided in the update
+    if "stop_loss" in update_data:
+        updated = dataclasses.replace(
+            updated,
+            actual_r_multiple=DerivedFieldCalculator.calc_actual_r(
+                exit_price=updated.exit_price,
+                entry_price=updated.entry_price,
+                stop_loss=updated.stop_loss,
+                direction=updated.direction,
+            ),
+        )
     saved = trade_repo.save(updated)
     return TradeResponse.from_domain(saved)
 
