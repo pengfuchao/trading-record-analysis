@@ -237,11 +237,15 @@ class MT5Connector:
 
             # Use the last OUT deal as the exit point
             last_out = max(out_deals, key=lambda d: d.time)
-            exit_time = datetime.fromtimestamp(last_out.time)
+            # MT5 deal.time is a UTC epoch integer — use utcfromtimestamp so that
+            # stored datetimes are timezone-naive UTC regardless of the machine's
+            # local timezone. datetime.fromtimestamp() would apply the OS local
+            # offset and produce wrong timestamps on non-UTC machines.
+            exit_time = datetime.utcfromtimestamp(last_out.time)
             exit_price = last_out.price
 
             # Entry from IN deal
-            entry_time = datetime.fromtimestamp(in_deal.time)
+            entry_time = datetime.utcfromtimestamp(in_deal.time)
             entry_price = in_deal.price
             sl = in_deal.sl if in_deal.sl != 0.0 else None
             tp = in_deal.tp if in_deal.tp != 0.0 else None

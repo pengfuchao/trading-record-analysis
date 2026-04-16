@@ -180,9 +180,16 @@ def get_sync_status(
     cfg = svc.get_config(account_id)
     runs = svc.get_recent_runs(account_id, limit=limit)
 
+    # Surface the most-recent successful run's completion time prominently
+    last_sync_at = next(
+        (r.completed_at for r in runs if r.status == "success" and r.completed_at),
+        None,
+    )
+
     return MT5SyncStatusResponse(
         account_id=account_id,
         sync_configured=cfg is not None,
         enabled=cfg.enabled if cfg else False,
+        last_sync_at=last_sync_at,
         last_runs=[MT5SyncRunSummary.model_validate(r) for r in runs],
     )

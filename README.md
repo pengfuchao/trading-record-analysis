@@ -98,10 +98,63 @@ npm run dev
 
 7. **Generate coaching** — go to AI Coach, select a date range, click Generate Review to get a pattern-based or AI-written performance summary
 
+## MT5 Live Sync — Phase 1 Usage
+
+Phase 1 is backend-only. Use the API directly (no frontend UI yet).
+
+### First-time setup
+
+1. Apply migration 006:
+   ```bash
+   alembic upgrade head
+   ```
+
+2. Set the MT5 password env var (Windows only — same machine as MetaTrader 5):
+   ```bash
+   # Key format: MT5_<ACCOUNT_ID_UPPER_UNDERSCORED>_PASSWORD
+   # Example for account "ftmo-p1":
+   MT5_FTMO_P1_PASSWORD=yourpassword
+   ```
+
+3. Create the MT5 config for your account:
+   ```bash
+   curl -X POST http://localhost:8000/api/v1/accounts/ftmo-p1/mt5-config \
+     -H "Content-Type: application/json" \
+     -d '{
+       "mt5_login": 12345678,
+       "mt5_server": "ICMarkets-Live",
+       "broker_utc_offset": 2
+     }'
+   ```
+
+4. Trigger a manual sync:
+   ```bash
+   curl -X POST http://localhost:8000/api/v1/accounts/ftmo-p1/mt5-sync \
+     -H "Content-Type: application/json" \
+     -d '{"from_date": "2024-01-01T00:00:00", "to_date": "2024-04-01T00:00:00"}'
+   # Omit body to default to last 30 days
+   ```
+
+5. Check sync status:
+   ```bash
+   curl http://localhost:8000/api/v1/accounts/ftmo-p1/mt5-sync/status
+   ```
+
+### Notes
+
+- After sync, the **dashboard, FTMO panel, and trade log all update automatically** — they query trades live on every page load, no cache flush needed.
+- MT5 syncs broker-sourced fields only. All manual enrichment (setup_type, notes, flags, reflection) is preserved on re-sync.
+- `session` (Asia/London/NY) is set on first sync. It is **not** updated on re-sync to preserve any manual overrides. If you want session populated for existing trades, run `POST /accounts/{id}/import/recompute-derived?recalculate_session=true` after sync.
+- The `broker_utc_offset` in your MT5 config controls session classification and FTMO daily loss calculation. Verify it matches your broker's server timezone.
+- On Linux/Mac (no MetaTrader5 package): sync returns `status: "error"` with a platform message. The error is recorded in the audit log. No data is corrupted.
+
 ## Current Limitations
 
-- MT5 live sync is backend-only in Phase 1 — no frontend UI yet; use `POST /api/v1/accounts/{id}/mt5-sync` directly. Requires Windows with MetaTrader5 installed.
+- MT5 live sync is backend-only in Phase 1 — no frontend UI yet; use the API endpoints above
+- MT5 sync requires Windows with MetaTrader5 package: `pip install MetaTrader5`
 - MT5 password is stored in `.env` only, never in the database
+- MT5 sync is manual-trigger only in Phase 1 — no background polling (Phase 2)
+- Open positions and partial closes (hedges) are not synced yet (Phase 2)
 - No authentication — the app is single-user, designed for local/personal use
 - No chart screenshot attachments — image upload is not yet implemented
 - Trade log pagination not implemented — may be slow with 500+ trades
@@ -114,7 +167,7 @@ See `RPD.md` for full product roadmap. Summary:
 
 | Priority | Feature |
 |---|---|
-| 1 | MT5 live sync (periodic background sync of closed trades, open positions, account info) |
+| 1 | MT5 live sync Phase 2 (background polling, open positions, frontend UI) |
 | 2 | Telegram notifications (FTMO warnings, import success, coaching generated, daily summary) |
 | 3 | Telegram structured write-in (create plans, add journal notes, query account status via Telegram) |
 | 4 | Plan-vs-execution analytics (followed_plan signal, planned vs unplanned trade performance) |

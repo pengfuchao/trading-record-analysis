@@ -3,22 +3,29 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class MT5ConfigCreate(BaseModel):
     """Body for POST /accounts/{id}/mt5-config. Password is set in .env, not here."""
-    mt5_login: int = Field(..., description="MT5 account number (numeric login)")
-    mt5_server: str = Field(..., description="Broker server string, e.g. 'ICMarkets-Live'")
+    mt5_login: int = Field(..., gt=0, description="MT5 account number (numeric login, must be > 0)")
+    mt5_server: str = Field(..., min_length=1, description="Broker server string, e.g. 'ICMarkets-Live'")
     terminal_path: Optional[str] = Field(
         None,
         description="Full path to terminal64.exe. Leave null to use MT5 default location.",
     )
-    broker_utc_offset: int = Field(2, description="Broker server UTC offset (default 2 = EET)")
+    broker_utc_offset: int = Field(2, ge=-12, le=14, description="Broker server UTC offset (default 2 = EET)")
     polling_interval_minutes: int = Field(
-        60, description="Placeholder for Phase 2 auto-polling. Not used in Phase 1."
+        60, gt=0, description="Placeholder for Phase 2 auto-polling. Not used in Phase 1."
     )
     enabled: bool = Field(True, description="Whether auto-sync is enabled (Phase 2)")
+
+    @field_validator("mt5_server")
+    @classmethod
+    def server_not_whitespace(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("mt5_server must not be blank")
+        return v.strip()
 
 
 class MT5ConfigResponse(MT5ConfigCreate):
@@ -65,6 +72,8 @@ class MT5SyncRunSummary(BaseModel):
     started_at: datetime
     completed_at: Optional[datetime]
     status: str
+    from_date: Optional[datetime]
+    to_date: Optional[datetime]
     deals_fetched: Optional[int]
     positions_built: Optional[int]
     trades_new: Optional[int]
@@ -81,4 +90,5 @@ class MT5SyncStatusResponse(BaseModel):
     account_id: str
     sync_configured: bool
     enabled: bool
+    last_sync_at: Optional[datetime]   # completed_at of the most recent successful run
     last_runs: List[MT5SyncRunSummary]
