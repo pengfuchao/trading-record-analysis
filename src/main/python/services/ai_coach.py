@@ -35,6 +35,12 @@ class CoachingContext:
     top_mistakes: list             # [{tag, count, total_cost, after_loss_rate}]
     mistake_report: object         # MistakeReport domain object
 
+    # Plan-awareness signals (Module 8 integration)
+    # These are 0 when no plans exist — coaching prompt only mentions them
+    # when the counts are non-trivial.
+    planned_trade_count: int = 0           # trades with a linked trade plan
+    unplanned_trade_count: int = 0         # trades without a linked trade plan
+
 
 # ── Generation result ──────────────────────────────────────────────────────────
 
@@ -123,6 +129,7 @@ class AICoachService:
 
         followed_count = sum(1 for t in trades if t.followed_plan is True)
         a_plus_count = sum(1 for t in trades if t.is_a_plus_setup is True)
+        planned_count = sum(1 for t in trades if t.trade_plan_id is not None)
         source_counts: dict = {}
         for t in trades:
             if t.problem_source:
@@ -152,6 +159,8 @@ class AICoachService:
             source_counts=source_counts,
             top_mistakes=top_mistakes,
             mistake_report=mistake_report,
+            planned_trade_count=planned_count,
+            unplanned_trade_count=total - planned_count,
         )
 
     # ── AI path ────────────────────────────────────────────────────────────────
@@ -330,6 +339,12 @@ class AICoachService:
                 f"Bring plan adherence above 80% (currently {ctx.followed_plan_rate}%). "
                 f"After each trade, immediately tag whether it was planned or unplanned."
             )
+        elif ctx.planned_trade_count == 0 and ctx.total_trades >= 5:
+            improvement = (
+                "No trades have a linked pre-trade plan this period. "
+                "Write a trade plan (in the Trade Plans section) before your next trade — "
+                "planning ahead is one of the highest-leverage improvements for discretionary traders."
+            )
         else:
             improvement = (
                 "Record problem_source and mistake_tags on every trade this week. "
@@ -363,6 +378,9 @@ class AICoachService:
             exec_parts.append(f"Followed plan: {ctx.followed_plan_rate}%")
         if ctx.a_plus_rate is not None:
             exec_parts.append(f"A+ setups taken: {ctx.a_plus_rate}%")
+        if ctx.planned_trade_count > 0 or ctx.unplanned_trade_count > 0:
+            plan_pct = round(ctx.planned_trade_count / (ctx.planned_trade_count + ctx.unplanned_trade_count) * 100)
+            exec_parts.append(f"Pre-planned trades: {ctx.planned_trade_count}/{ctx.planned_trade_count + ctx.unplanned_trade_count} ({plan_pct}%)")
         exec_str = " | ".join(exec_parts) if exec_parts else "not recorded"
 
         if ctx.source_counts:
