@@ -13,10 +13,17 @@ export default function TradesPage() {
   const { accountId } = useAccount();
   const [symbol, setSymbol] = useState("");
   const [result, setResult] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   const { data: trades = [], isLoading } = useSWR(
-    accountId ? `trades-${accountId}-${symbol}-${result}` : null,
-    () => api.listTrades(accountId, { symbol: symbol || undefined, result: result || undefined })
+    accountId ? `trades-${accountId}-${symbol}-${result}-${fromDate}-${toDate}` : null,
+    () => api.listTrades(accountId, {
+      symbol: symbol || undefined,
+      result: result || undefined,
+      from_date: fromDate || undefined,
+      to_date: toDate || undefined,
+    })
   );
 
   return (
@@ -27,7 +34,7 @@ export default function TradesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-2 items-center">
         <input
           placeholder="Symbol (e.g. XAUUSD)"
           value={symbol}
@@ -44,6 +51,26 @@ export default function TradesPage() {
           <option value="loss">Loss</option>
           <option value="breakeven">Breakeven</option>
         </select>
+        <span className="text-xs text-gray-500">from</span>
+        <input
+          type="date"
+          value={fromDate}
+          onChange={(e) => setFromDate(e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+        <span className="text-xs text-gray-500">to</span>
+        <input
+          type="date"
+          value={toDate}
+          onChange={(e) => setToDate(e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+        {(fromDate || toDate) && (
+          <button
+            onClick={() => { setFromDate(""); setToDate(""); }}
+            className="text-xs text-gray-400 hover:text-gray-200 bg-gray-800 border border-gray-700 rounded px-2 py-1.5"
+          >Clear dates</button>
+        )}
       </div>
 
       {isLoading && <p className="text-gray-500 text-sm">Loading…</p>}

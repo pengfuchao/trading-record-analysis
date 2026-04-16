@@ -266,7 +266,7 @@ export default function PlansPage() {
 
       {plans.length > 0 && (
         <div className="bg-gray-900 border border-gray-800 rounded-lg divide-y divide-gray-800">
-          {plans.map((plan) => (
+          {[...plans].sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? "")).map((plan) => (
             <div key={plan.plan_id} className="px-4 py-3 flex items-center justify-between hover:bg-gray-800/40">
               <div className="flex items-center gap-3 min-w-0">
                 <PlanStatusBadge status={plan.status} />

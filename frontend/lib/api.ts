@@ -87,8 +87,13 @@ export const api = {
   },
 
   // Analytics
-  getAnalytics: (accountId: string) =>
-    request<AccountAnalytics>(`/accounts/${accountId}/analytics`),
+  getAnalytics: (accountId: string, params?: DateRange) => {
+    const q = new URLSearchParams();
+    if (params?.from_date) q.set("from_date", params.from_date);
+    if (params?.to_date) q.set("to_date", params.to_date);
+    const qs = q.toString();
+    return request<AccountAnalytics>(`/accounts/${accountId}/analytics${qs ? `?${qs}` : ""}`);
+  },
 
   // Mistakes
   getMistakes: (accountId: string) =>

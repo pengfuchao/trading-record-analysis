@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -84,12 +85,12 @@ function DrawdownChart({ drawdown, dates }: { drawdown: number[]; dates: string[
           tick={{ fontSize: 10, fill: "#6b7280" }}
           domain={[minDD * 1.1, 0]}
           width={60}
-          tickFormatter={(v: number) => `${v.toFixed(1)}%`}
+          tickFormatter={(v: number) => fmtPnl(v).replace(/[\s$]/g, "")}
         />
         <ReferenceLine y={0} stroke="#6b7280" strokeDasharray="3 3" />
         <Tooltip
           contentStyle={{ background: "#111827", border: "1px solid #374151", fontSize: 12 }}
-          formatter={(v: number) => [`${v.toFixed(2)}%`, "Drawdown"]}
+          formatter={(v: number) => [fmtPnl(v), "Drawdown"]}
         />
         <Area
           type="monotone"
@@ -104,13 +105,31 @@ function DrawdownChart({ drawdown, dates }: { drawdown: number[]; dates: string[
   );
 }
 
+// ── Date helpers ───────────────────────────────────────────────────────────────
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function nDaysAgoISO(n: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 // ── Main dashboard ─────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const { accountId } = useAccount();
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
   const { data: analytics, isLoading } = useSWR(
-    accountId ? `analytics-${accountId}` : null,
-    () => api.getAnalytics(accountId)
+    accountId ? `analytics-${accountId}-${fromDate}-${toDate}` : null,
+    () => api.getAnalytics(accountId, {
+      from_date: fromDate || undefined,
+      to_date: toDate || undefined,
+    })
   );
   const { data: mistakes } = useSWR(
     accountId ? `mistakes-${accountId}` : null,
@@ -124,6 +143,39 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Account Dashboard</h1>
         <AccountSelector />
+      </div>
+
+      {/* Date range filter */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-gray-500 uppercase tracking-wider">Period:</span>
+        <input
+          type="date"
+          value={fromDate}
+          onChange={(e) => setFromDate(e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100 focus:outline-none focus:border-blue-500"
+        />
+        <span className="text-xs text-gray-500">—</span>
+        <input
+          type="date"
+          value={toDate}
+          onChange={(e) => setToDate(e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100 focus:outline-none focus:border-blue-500"
+        />
+        <button
+          onClick={() => { setFromDate(nDaysAgoISO(6)); setToDate(todayISO()); }}
+          className="text-xs text-gray-400 hover:text-gray-200 bg-gray-800 border border-gray-700 rounded px-2 py-1"
+        >7d</button>
+        <button
+          onClick={() => { setFromDate(nDaysAgoISO(29)); setToDate(todayISO()); }}
+          className="text-xs text-gray-400 hover:text-gray-200 bg-gray-800 border border-gray-700 rounded px-2 py-1"
+        >30d</button>
+        <button
+          onClick={() => { setFromDate(""); setToDate(""); }}
+          className="text-xs text-gray-400 hover:text-gray-200 bg-gray-800 border border-gray-700 rounded px-2 py-1"
+        >All time</button>
+        {(fromDate || toDate) && (
+          <span className="text-xs text-blue-400">filtered</span>
+        )}
       </div>
 
       {!accountId && (

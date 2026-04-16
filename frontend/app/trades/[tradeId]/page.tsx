@@ -249,10 +249,12 @@ export default function TradeDetailPage({ params }: { params: Promise<{ tradeId:
     setSaveSuccess(false);
     try {
       await api.updateTrade(accountId, tradeId, editToPatch(editState));
-      // Invalidate both detail and trade list caches
+      // Invalidate detail cache
       await mutate(swrKey);
       // Invalidate all trade-list keys for this account (they include filter suffixes)
       await mutate((key) => typeof key === "string" && key.startsWith(`trades-${accountId}`));
+      // Invalidate analytics so dashboard reflects updated followed_plan / mistake flags
+      await mutate((key) => typeof key === "string" && key.startsWith(`analytics-${accountId}`));
       setSaveSuccess(true);
       setEditing(false);
       setEditState(null);
