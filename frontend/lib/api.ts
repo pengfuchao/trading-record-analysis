@@ -322,6 +322,11 @@ export interface AccountAnalytics {
   // Streaks
   max_consecutive_wins: number;
   max_consecutive_losses: number;
+
+  // Equity / drawdown curves
+  equity_curve: number[];
+  drawdown_curve: number[];
+  trade_dates: string[];
 }
 
 export interface MistakeStats {

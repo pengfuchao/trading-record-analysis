@@ -210,6 +210,11 @@ class AnalyticsSummaryResponse(BaseModel):
     max_consecutive_wins: int
     max_consecutive_losses: int
 
+    # Equity / drawdown curves (aligned by trade index)
+    equity_curve: List[float]
+    drawdown_curve: List[float]
+    trade_dates: List[datetime]
+
 
 def report_to_summary(r: AccountReport) -> AnalyticsSummaryResponse:
     o = r.overall
@@ -244,6 +249,9 @@ def report_to_summary(r: AccountReport) -> AnalyticsSummaryResponse:
         sortino_ratio=o.sortino_ratio,
         max_consecutive_wins=o.max_consecutive_wins,
         max_consecutive_losses=o.max_consecutive_losses,
+        equity_curve=r.equity_curve,
+        drawdown_curve=r.drawdown_curve,
+        trade_dates=r.trade_dates,
     )
 
 
