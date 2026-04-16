@@ -96,13 +96,23 @@ Backend-only. No frontend UI yet. Phase 1 delivers:
 - App starts normally on Linux/Mac without the package (sync returns error if triggered)
 - Phase 1 is synchronous — HTTP request blocks until sync completes
 
+#### Phase 1b — Frontend UI (IMPLEMENTED 2026-04-16)
+
+Added `/mt5-sync` page (accessible from sidebar) with:
+- **Connection config form**: login, broker server, UTC offset, terminal path; save/update button
+- **Password note**: computed env var name shown in UI (`MT5_<ACCOUNT_ID_UPPER>_PASSWORD`)
+- **Manual sync trigger**: date range picker + Sync Now button with loading state
+- **Sync result card**: new/updated/skipped/deals_fetched counts or error message
+- **Run history table**: last 10 runs with started_at, status badge, date range, counts, error
+- **Last sync time**: shown prominently in header of run history section
+- SWR invalidation after successful sync (trades, analytics, FTMO, mistakes)
+
 #### Phase 2 — Scheduled Background Polling (DEFERRED)
 
 - APScheduler periodic background sync (closed trades + open positions)
 - `polling_interval_minutes` DB column already exists as placeholder — no migration needed
 - Open position tracking (`mt5.positions_get()`) — needs separate schema design
 - DEAL_ENTRY_INOUT (partial closes/hedges) handling
-- Frontend UI: sync config page, manual trigger button, sync status indicator
 
 **Why MT5 first, not MT4:**
 - MT5 has a clean Python package with official support
@@ -221,17 +231,18 @@ Next batch (Refinements)
   ├── Per-symbol/session analytics
   └── broker_utc_offset UI configuration
 
-Expansion Phase 1 (DONE — backend only)
-  └── MT5 live sync Phase 1
+Expansion Phase 1 (DONE)
+  └── MT5 live sync — backend + frontend UI
         - MT5Connector + MT5SyncService
         - manual trigger API endpoint
         - sync audit log
+        - /mt5-sync page (config form, sync trigger, run history)
 
-Expansion Phase 1b (NEXT)
+Expansion Phase 2 (NEXT)
   └── MT5 live sync Phase 2
         - background scheduler (APScheduler)
         - open position tracking
-        - frontend sync UI
+        - DEAL_ENTRY_INOUT (partial closes)
 
 Expansion Phase 2
   └── Telegram notifications (push-only)

@@ -11,6 +11,7 @@ const nav = [
   { href: "/daily",      label: "Daily Plans" },
   { href: "/coaching",   label: "AI Coach" },
   { href: "/import",     label: "Import" },
+  { href: "/mt5-sync",   label: "MT5 Sync" },
 ];
 
 export default function Sidebar() {

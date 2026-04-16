@@ -180,6 +180,22 @@ export const api = {
   unlinkPlanFromTrade: (accountId: string, planId: string, tradeId: string) =>
     request<Trade>(`/accounts/${accountId}/trade-plans/${planId}/link/${tradeId}`, { method: "DELETE" }),
 
+  // MT5 Sync
+  getMt5Config: (accountId: string) =>
+    request<MT5Config>(`/accounts/${accountId}/mt5-config`),
+  saveMt5Config: (accountId: string, body: MT5ConfigCreate) =>
+    request<MT5Config>(`/accounts/${accountId}/mt5-config`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getMt5Status: (accountId: string, limit = 10) =>
+    request<MT5SyncStatus>(`/accounts/${accountId}/mt5-sync/status?limit=${limit}`),
+  triggerMt5Sync: (accountId: string, body: MT5SyncTrigger = {}) =>
+    request<MT5SyncResponse>(`/accounts/${accountId}/mt5-sync`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   // Daily Reviews
   listReviews: (accountId: string, params?: DateRange) => {
     const q = new URLSearchParams();
@@ -621,4 +637,68 @@ export interface CoachingReviewDetailResponse {
   top_mistakes: MistakeInsight[];
   diagnosis: string;
   improvement: string;
+}
+
+export interface MT5Config {
+  account_id: string;
+  mt5_login: number;
+  mt5_server: string;
+  terminal_path?: string;
+  broker_utc_offset: number;
+  polling_interval_minutes: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MT5ConfigCreate {
+  mt5_login: number;
+  mt5_server: string;
+  terminal_path?: string;
+  broker_utc_offset: number;
+  polling_interval_minutes?: number;
+  enabled?: boolean;
+}
+
+export interface MT5SyncTrigger {
+  from_date?: string;
+  to_date?: string;
+}
+
+export interface MT5SyncResponse {
+  run_id: string;
+  account_id: string;
+  status: string;
+  deals_fetched: number;
+  positions_built: number;
+  trades_new: number;
+  trades_updated: number;
+  trades_skipped: number;
+  error_message?: string;
+  started_at: string;
+  completed_at?: string;
+}
+
+export interface MT5SyncRunSummary {
+  run_id: string;
+  triggered_by: string;
+  started_at: string;
+  completed_at?: string;
+  status: string;
+  from_date?: string;
+  to_date?: string;
+  deals_fetched?: number;
+  positions_built?: number;
+  trades_new?: number;
+  trades_updated?: number;
+  trades_skipped?: number;
+  error_message?: string;
+}
+
+export interface MT5SyncStatus {
+  account_id: string;
+  sync_configured: boolean;
+  enabled: boolean;
+  last_sync_at?: string;
+  last_runs: MT5SyncRunSummary[];
 }

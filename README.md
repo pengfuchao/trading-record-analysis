@@ -29,7 +29,7 @@ A full-stack web app that gives you a structured way to:
 | Daily post-market reviews: create / edit / delete | Done |
 | AI coaching (weekly review via Claude API, rule-based fallback) | Done |
 | Coaching review history | Done |
-| MT5 live sync — Phase 1 (manual trigger, config CRUD, audit log) | Done (backend only) |
+| MT5 live sync — Phase 1 (config UI, manual sync trigger, run history, audit log) | Done |
 
 ## Tech Stack
 
@@ -150,7 +150,7 @@ Phase 1 is backend-only. Use the API directly (no frontend UI yet).
 
 ## Current Limitations
 
-- MT5 live sync is backend-only in Phase 1 — no frontend UI yet; use the API endpoints above
+- MT5 sync UI is at `/mt5-sync` in the sidebar — configure connection, trigger sync, view run history
 - MT5 sync requires Windows with MetaTrader5 package: `pip install MetaTrader5`
 - MT5 password is stored in `.env` only, never in the database
 - MT5 sync is manual-trigger only in Phase 1 — no background polling (Phase 2)
