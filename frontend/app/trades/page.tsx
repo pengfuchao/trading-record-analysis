@@ -47,9 +47,9 @@ export default function TradesPage() {
           className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           <option value="">All results</option>
-          <option value="win">Win</option>
-          <option value="loss">Loss</option>
-          <option value="breakeven">Breakeven</option>
+          <option value="Win">Win</option>
+          <option value="Loss">Loss</option>
+          <option value="Breakeven">Breakeven</option>
         </select>
         <span className="text-xs text-gray-500">from</span>
         <input
