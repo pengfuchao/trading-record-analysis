@@ -5,7 +5,9 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
-from src.main.python.core.performance_summary import AccountReport, PerformanceSummary
+from src.main.python.core.performance_summary import (
+    AccountReport, PerformanceSummary, PlanAdherenceGroup, PlanAdherenceReport,
+)
 
 
 class PerformanceSummaryResponse(BaseModel):
@@ -308,6 +310,78 @@ class FtmoCheckResponse(FtmoStatusResponse):
     """FtmoStatusResponse extended with notification metadata for /ftmo-check."""
     notification_sent: bool
     prev_status: Optional[str]
+
+
+# ── Plan adherence analytics ──────────────────────────────────────────────────
+
+class PlanAdherenceGroupResponse(BaseModel):
+    """Performance stats for one plan adherence slice."""
+    count:         int
+    win_rate:      Optional[float]
+    avg_pnl:       Optional[float]
+    avg_r:         Optional[float]
+    total_pnl:     float
+    profit_factor: Optional[float]
+
+
+class PlanAdherenceResponse(BaseModel):
+    """
+    Plan-vs-execution analytics.
+
+    Dimension 1 (trade_plan_id): planned / unplanned
+    Dimension 2 (followed_plan): followed / deviated / not_tagged
+    Intersection: linked_but_deviated_count
+    """
+    total_trades: int
+
+    # Dimension 1 — formal plan linkage
+    planned_count:   int
+    unplanned_count: int
+    planned_pct:     Optional[float]    # planned_count / total_trades * 100
+    planned:         PlanAdherenceGroupResponse
+    unplanned:       PlanAdherenceGroupResponse
+
+    # Dimension 2 — self-reported adherence
+    followed_count:   int
+    deviated_count:   int
+    not_tagged_count: int
+    followed:         PlanAdherenceGroupResponse
+    deviated:         PlanAdherenceGroupResponse
+
+    # Intersection
+    linked_but_deviated_count: int
+
+    # Pre-computed coaching signal sentences
+    coaching_signals: List[str]
+
+
+def _adherence_group_to_response(g: PlanAdherenceGroup) -> PlanAdherenceGroupResponse:
+    return PlanAdherenceGroupResponse(
+        count=g.count,
+        win_rate=g.win_rate,
+        avg_pnl=g.avg_pnl,
+        avg_r=g.avg_r,
+        total_pnl=g.total_pnl,
+        profit_factor=g.profit_factor,
+    )
+
+
+def plan_adherence_to_response(r: PlanAdherenceReport) -> PlanAdherenceResponse:
+    return PlanAdherenceResponse(
+        total_trades=r.total_trades,
+        planned_count=r.planned_count,
+        unplanned_count=r.unplanned_count,
+        planned_pct=r.planned_pct,
+        planned=_adherence_group_to_response(r.planned),
+        unplanned=_adherence_group_to_response(r.unplanned),
+        followed_count=r.followed_count,
+        deviated_count=r.deviated_count,
+        not_tagged_count=r.not_tagged_count,
+        followed=_adherence_group_to_response(r.followed),
+        deviated=_adherence_group_to_response(r.deviated),
+        linked_but_deviated_count=r.linked_but_deviated_count,
+        coaching_signals=r.coaching_signals,
+    )
 
 
 # ── Import history ─────────────────────────────────────────────────────────────

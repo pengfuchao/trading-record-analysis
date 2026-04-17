@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from src.main.python.core.account_analytics import AccountAnalytics
 from src.main.python.core.mistake_analyzer import MistakeAnalyzer
+from src.main.python.core.performance_summary import PlanAdherenceGroup
 from src.main.python.models.account import Account
 from src.main.python.models.trade import Trade
 from src.main.python.utils.logging_utils import get_logger
@@ -35,11 +36,22 @@ class CoachingContext:
     top_mistakes: list             # [{tag, count, total_cost, after_loss_rate}]
     mistake_report: object         # MistakeReport domain object
 
-    # Plan-awareness signals (Module 8 integration)
-    # These are 0 when no plans exist — coaching prompt only mentions them
-    # when the counts are non-trivial.
+    # Plan-awareness signals
     planned_trade_count: int = 0           # trades with a linked trade plan
     unplanned_trade_count: int = 0         # trades without a linked trade plan
+
+    # Plan-vs-execution performance differentials (populated when n >= 3 per group)
+    planned_win_rate:     Optional[float] = None   # win rate for planned trades
+    unplanned_win_rate:   Optional[float] = None
+    planned_avg_pnl:      Optional[float] = None   # avg PnL per planned trade
+    unplanned_avg_pnl:    Optional[float] = None
+    followed_win_rate:    Optional[float] = None   # win rate for followed_plan=True
+    deviated_win_rate:    Optional[float] = None   # win rate for followed_plan=False
+    followed_avg_pnl:     Optional[float] = None
+    deviated_avg_pnl:     Optional[float] = None
+    deviated_total_pnl:   Optional[float] = None   # total PnL cost of deviations
+    deviated_count:       int = 0                  # count of followed_plan=False trades
+    linked_but_deviated_count: int = 0             # has plan AND followed_plan=False
 
 
 # ── Generation result ──────────────────────────────────────────────────────────
@@ -145,6 +157,16 @@ class AICoachService:
                 "after_loss_rate": s.after_loss_rate,
             })
 
+        # Plan-vs-execution performance differentials
+        plan_report = AccountAnalytics.compute_plan_adherence(trades)
+        MIN_N = 3
+
+        def _wr(g: PlanAdherenceGroup) -> Optional[float]:
+            return round((g.win_rate or 0) * 100, 1) if g.count >= MIN_N else None
+
+        def _pnl(g: PlanAdherenceGroup) -> Optional[float]:
+            return g.avg_pnl if g.count >= MIN_N else None
+
         return CoachingContext(
             from_date=from_date,
             to_date=to_date,
@@ -161,6 +183,20 @@ class AICoachService:
             mistake_report=mistake_report,
             planned_trade_count=planned_count,
             unplanned_trade_count=total - planned_count,
+            planned_win_rate=_wr(plan_report.planned),
+            unplanned_win_rate=_wr(plan_report.unplanned),
+            planned_avg_pnl=_pnl(plan_report.planned),
+            unplanned_avg_pnl=_pnl(plan_report.unplanned),
+            followed_win_rate=_wr(plan_report.followed),
+            deviated_win_rate=_wr(plan_report.deviated),
+            followed_avg_pnl=_pnl(plan_report.followed),
+            deviated_avg_pnl=_pnl(plan_report.deviated),
+            deviated_total_pnl=(
+                plan_report.deviated.total_pnl
+                if plan_report.deviated_count >= MIN_N else None
+            ),
+            deviated_count=plan_report.deviated_count,
+            linked_but_deviated_count=plan_report.linked_but_deviated_count,
         )
 
     # ── AI path ────────────────────────────────────────────────────────────────
@@ -299,12 +335,31 @@ class AICoachService:
             "risk":       "risk management",
         }
 
+        # Plan adherence diagnosis signals
+        followed_worse = (
+            ctx.followed_avg_pnl is not None
+            and ctx.deviated_avg_pnl is not None
+            and ctx.deviated_avg_pnl > ctx.followed_avg_pnl
+        )
+        planned_worse = (
+            ctx.planned_avg_pnl is not None
+            and ctx.unplanned_avg_pnl is not None
+            and ctx.unplanned_avg_pnl > ctx.planned_avg_pnl
+        )
+
         if dominant_source and dominant_source in source_map:
             area = source_map[dominant_source]
             pct = round(ctx.source_counts[dominant_source] / sum(ctx.source_counts.values()) * 100)
             diagnosis = (
                 f"Your recorded problem_source data points to {area} as the primary issue "
                 f"({pct}% of reviewed trades). Focus here before addressing other areas."
+            )
+        elif ctx.deviated_avg_pnl is not None and ctx.followed_avg_pnl is not None and not followed_worse:
+            diff = (ctx.followed_avg_pnl or 0) - (ctx.deviated_avg_pnl or 0)
+            diagnosis = (
+                f"Execution discipline is the clearest gap: trades where you deviated from the plan "
+                f"underperform by ${diff:.2f}/trade on average. "
+                f"Closing this gap is the highest-leverage improvement available."
             )
         elif ctx.followed_plan_rate is not None and ctx.followed_plan_rate < 70:
             diagnosis = (
@@ -326,7 +381,16 @@ class AICoachService:
             )
 
         # ── Improvement ────────────────────────────────────────────────────────
-        if ctx.top_mistakes:
+        if ctx.linked_but_deviated_count > 0 and ctx.deviated_avg_pnl is not None:
+            cost = ctx.deviated_total_pnl
+            cost_str = f" (total cost: ${abs(cost):.2f})" if cost is not None and cost < 0 else ""
+            improvement = (
+                f"You wrote {ctx.linked_but_deviated_count} pre-trade plan(s) but then deviated "
+                f"from them{cost_str}. "
+                f"Before your next trade, re-read the plan and identify the specific rule you broke. "
+                f"Add that to your pre-trade checklist."
+            )
+        elif ctx.top_mistakes:
             worst = ctx.top_mistakes[0]
             tag_label = worst["tag"].replace("_", " ")
             improvement = (
@@ -334,10 +398,10 @@ class AICoachService:
                 f"It cost ${abs(worst['total_cost']):.2f} over {worst['count']} occurrence(s). "
                 f"Before entering any trade, explicitly confirm you are not making this mistake."
             )
-        elif ctx.followed_plan_rate is not None and ctx.followed_plan_rate < 80:
+        elif ctx.deviated_count > 0 and ctx.followed_plan_rate is not None and ctx.followed_plan_rate < 80:
             improvement = (
                 f"Bring plan adherence above 80% (currently {ctx.followed_plan_rate}%). "
-                f"After each trade, immediately tag whether it was planned or unplanned."
+                f"After each trade, immediately tag whether it followed the plan or deviated."
             )
         elif ctx.planned_trade_count == 0 and ctx.total_trades >= 5:
             improvement = (
@@ -378,9 +442,6 @@ class AICoachService:
             exec_parts.append(f"Followed plan: {ctx.followed_plan_rate}%")
         if ctx.a_plus_rate is not None:
             exec_parts.append(f"A+ setups taken: {ctx.a_plus_rate}%")
-        if ctx.planned_trade_count > 0 or ctx.unplanned_trade_count > 0:
-            plan_pct = round(ctx.planned_trade_count / (ctx.planned_trade_count + ctx.unplanned_trade_count) * 100)
-            exec_parts.append(f"Pre-planned trades: {ctx.planned_trade_count}/{ctx.planned_trade_count + ctx.unplanned_trade_count} ({plan_pct}%)")
         exec_str = " | ".join(exec_parts) if exec_parts else "not recorded"
 
         if ctx.source_counts:
@@ -406,6 +467,34 @@ class AICoachService:
             )
         mistakes_block = "\n".join(mistake_lines) if mistake_lines else "  - None recorded"
 
+        # ── Plan-vs-execution block (only rendered when data is available) ────
+        total_planned = ctx.planned_trade_count + ctx.unplanned_trade_count
+        plan_lines = []
+        if total_planned > 0:
+            plan_pct = round(ctx.planned_trade_count / total_planned * 100)
+            plan_lines.append(
+                f"  Pre-planned trades: {ctx.planned_trade_count}/{total_planned} ({plan_pct}%)"
+            )
+        if ctx.planned_win_rate is not None and ctx.unplanned_win_rate is not None:
+            p_pnl = f"${ctx.planned_avg_pnl:+.2f}" if ctx.planned_avg_pnl is not None else "n/a"
+            u_pnl = f"${ctx.unplanned_avg_pnl:+.2f}" if ctx.unplanned_avg_pnl is not None else "n/a"
+            plan_lines.append(
+                f"  Planned: win rate {ctx.planned_win_rate}%, avg PnL {p_pnl} | "
+                f"Unplanned: win rate {ctx.unplanned_win_rate}%, avg PnL {u_pnl}"
+            )
+        if ctx.followed_win_rate is not None and ctx.deviated_win_rate is not None:
+            f_pnl = f"${ctx.followed_avg_pnl:+.2f}" if ctx.followed_avg_pnl is not None else "n/a"
+            d_pnl = f"${ctx.deviated_avg_pnl:+.2f}" if ctx.deviated_avg_pnl is not None else "n/a"
+            plan_lines.append(
+                f"  Followed plan: win rate {ctx.followed_win_rate}%, avg PnL {f_pnl} | "
+                f"Deviated: win rate {ctx.deviated_win_rate}%, avg PnL {d_pnl}"
+            )
+        if ctx.linked_but_deviated_count > 0:
+            plan_lines.append(
+                f"  Linked plan but deviated: {ctx.linked_but_deviated_count} trade(s)"
+            )
+        plan_block = "\n".join(plan_lines) if plan_lines else "  not recorded"
+
         return f"""You are a professional trading coach reviewing a trader's performance.
 Analyze the data below and provide a structured JSON coaching review.
 
@@ -418,6 +507,9 @@ PERFORMANCE:
 EXECUTION QUALITY:
   {exec_str}
   Problem source breakdown: {source_block}
+
+PLAN ADHERENCE:
+{plan_block}
 
 TOP MISTAKES (by total cost):
 {mistakes_block}

@@ -4,7 +4,9 @@ from datetime import date, datetime, timedelta
 from typing import Callable, Dict, List, Optional
 
 from src.main.python.core.metrics_calculator import MetricsCalculator
-from src.main.python.core.performance_summary import AccountReport, PerformanceSummary
+from src.main.python.core.performance_summary import (
+    AccountReport, PerformanceSummary, PlanAdherenceGroup, PlanAdherenceReport,
+)
 from src.main.python.models.account import Account
 from src.main.python.models.enums import TradeResult
 from src.main.python.models.trade import Trade
@@ -346,3 +348,183 @@ class AccountAnalytics:
             overall_status=overall_status,
             account_status=account_status,
         )
+
+    # ── Plan-vs-execution analytics ────────────────────────────────────────────
+
+    @staticmethod
+    def compute_plan_adherence(trades: List[Trade]) -> PlanAdherenceReport:
+        """
+        Compute plan-vs-execution analytics from a list of trades.
+
+        No schema changes required — uses existing trade fields:
+          trade_plan_id  → formal plan linkage (planned / unplanned)
+          followed_plan  → self-reported adherence (followed / deviated / not tagged)
+        """
+        if not trades:
+            return PlanAdherenceReport(
+                total_trades=0,
+                planned_count=0,
+                unplanned_count=0,
+                planned_pct=None,
+            )
+
+        # ── Dimension 1: formal plan linkage ─────────────────────────────────
+        planned_trades   = [t for t in trades if t.trade_plan_id is not None]
+        unplanned_trades = [t for t in trades if t.trade_plan_id is None]
+
+        planned_pct = (
+            round(len(planned_trades) / len(trades) * 100, 1) if trades else None
+        )
+
+        # ── Dimension 2: self-reported adherence ──────────────────────────────
+        followed_trades  = [t for t in trades if t.followed_plan is True]
+        deviated_trades  = [t for t in trades if t.followed_plan is False]
+        not_tagged       = [t for t in trades if t.followed_plan is None]
+
+        # ── Intersection ──────────────────────────────────────────────────────
+        linked_but_deviated = [
+            t for t in trades
+            if t.trade_plan_id is not None and t.followed_plan is False
+        ]
+
+        # ── Build groups ──────────────────────────────────────────────────────
+        planned_grp   = AccountAnalytics._adherence_group(planned_trades)
+        unplanned_grp = AccountAnalytics._adherence_group(unplanned_trades)
+        followed_grp  = AccountAnalytics._adherence_group(followed_trades)
+        deviated_grp  = AccountAnalytics._adherence_group(deviated_trades)
+
+        signals = AccountAnalytics._adherence_signals(
+            total=len(trades),
+            planned=planned_grp,
+            unplanned=unplanned_grp,
+            followed=followed_grp,
+            deviated=deviated_grp,
+            linked_but_deviated_count=len(linked_but_deviated),
+        )
+
+        return PlanAdherenceReport(
+            total_trades=len(trades),
+            planned_count=len(planned_trades),
+            unplanned_count=len(unplanned_trades),
+            planned_pct=planned_pct,
+            planned=planned_grp,
+            unplanned=unplanned_grp,
+            followed_count=len(followed_trades),
+            deviated_count=len(deviated_trades),
+            not_tagged_count=len(not_tagged),
+            followed=followed_grp,
+            deviated=deviated_grp,
+            linked_but_deviated_count=len(linked_but_deviated),
+            coaching_signals=signals,
+        )
+
+    @staticmethod
+    def _adherence_group(trades: List[Trade]) -> PlanAdherenceGroup:
+        """Summarize a subset of trades into a PlanAdherenceGroup."""
+        if not trades:
+            return PlanAdherenceGroup(
+                count=0, win_rate=None, avg_pnl=None, avg_r=None,
+                total_pnl=0.0, profit_factor=None,
+            )
+        summary = AccountAnalytics._summarize(trades, 0.0)
+        avg_pnl = summary.total_net_profit / len(trades)
+        return PlanAdherenceGroup(
+            count=len(trades),
+            win_rate=summary.win_rate,
+            avg_pnl=round(avg_pnl, 2),
+            avg_r=summary.avg_r_multiple,
+            total_pnl=round(summary.total_net_profit, 2),
+            profit_factor=summary.profit_factor,
+        )
+
+    @staticmethod
+    def _adherence_signals(
+        total: int,
+        planned: PlanAdherenceGroup,
+        unplanned: PlanAdherenceGroup,
+        followed: PlanAdherenceGroup,
+        deviated: PlanAdherenceGroup,
+        linked_but_deviated_count: int,
+    ) -> List[str]:
+        """
+        Generate plain-English coaching signal sentences from plan adherence data.
+        Only generates a signal when sample size is >= 3 for both sides of a comparison.
+        """
+        MIN_N = 3
+        signals: List[str] = []
+
+        # Signal 1: overall plan coverage
+        if total > 0 and planned.count > 0:
+            planned_pct = round(planned.count / total * 100)
+            signals.append(
+                f"{planned_pct}% of your trades ({planned.count}/{total}) "
+                f"have a formal pre-trade plan linked."
+            )
+        elif total >= MIN_N:
+            signals.append(
+                "No trades have a linked pre-trade plan yet. "
+                "Writing a plan before each trade is the highest-leverage journaling habit."
+            )
+
+        # Signal 2: planned vs unplanned performance comparison
+        if planned.count >= MIN_N and unplanned.count >= MIN_N:
+            p_wr  = round((planned.win_rate or 0) * 100, 1)
+            u_wr  = round((unplanned.win_rate or 0) * 100, 1)
+            p_pnl = planned.avg_pnl or 0.0
+            u_pnl = unplanned.avg_pnl or 0.0
+            diff  = p_pnl - u_pnl
+
+            if diff > 0:
+                signals.append(
+                    f"Planned trades outperform unplanned: "
+                    f"win rate {p_wr}% vs {u_wr}%, "
+                    f"avg PnL ${p_pnl:+.2f} vs ${u_pnl:+.2f} (+${diff:.2f}/trade edge from planning)."
+                )
+            elif diff < 0:
+                signals.append(
+                    f"Unplanned trades are performing better than planned this period "
+                    f"(win rate {u_wr}% vs {p_wr}%, avg PnL ${u_pnl:+.2f} vs ${p_pnl:+.2f}). "
+                    f"Review whether your plans are too rigid or your setups are stronger without them."
+                )
+
+        # Signal 3: followed vs deviated performance comparison
+        if followed.count >= MIN_N and deviated.count >= MIN_N:
+            f_wr  = round((followed.win_rate or 0) * 100, 1)
+            d_wr  = round((deviated.win_rate or 0) * 100, 1)
+            f_pnl = followed.avg_pnl or 0.0
+            d_pnl = deviated.avg_pnl or 0.0
+            diff  = f_pnl - d_pnl
+
+            if diff > 0:
+                signals.append(
+                    f"Trades where you followed the plan outperform deviations: "
+                    f"win rate {f_wr}% vs {d_wr}%, "
+                    f"avg PnL ${f_pnl:+.2f} vs ${d_pnl:+.2f}."
+                )
+            else:
+                signals.append(
+                    f"Trades where you deviated from the plan are performing better "
+                    f"(avg PnL ${d_pnl:+.2f} vs ${f_pnl:+.2f}). "
+                    f"Consider whether your in-session adjustments are an edge or luck."
+                )
+        elif followed.count >= MIN_N and deviated.count == 0:
+            signals.append(
+                f"All tagged trades followed the plan ({followed.count} trades). "
+                f"Great execution discipline."
+            )
+        elif deviated.count >= MIN_N:
+            d_cost = abs(deviated.total_pnl) if deviated.total_pnl < 0 else 0
+            if d_cost > 0:
+                signals.append(
+                    f"{deviated.count} trades were marked as plan deviations, "
+                    f"costing ${d_cost:.2f} total."
+                )
+
+        # Signal 4: linked but deviated — most actionable insight
+        if linked_but_deviated_count > 0:
+            signals.append(
+                f"{linked_but_deviated_count} trade(s) had a linked plan but were later marked "
+                f"as not followed — these are your clearest execution discipline cases."
+            )
+
+        return signals

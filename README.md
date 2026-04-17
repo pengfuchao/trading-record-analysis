@@ -31,6 +31,7 @@ A full-stack web app that gives you a structured way to:
 | Coaching review history | Done |
 | MT5 live sync — Phase 1 (config UI, manual sync trigger, run history, audit log) | Done |
 | Telegram notifications — Phase 1 (MT5 sync result, FTMO risk alerts, coaching generated) | Done |
+| Plan-vs-execution analytics (planned/unplanned + followed/deviated comparison, dashboard panel, coaching signals) | Done |
 
 ## Tech Stack
 
@@ -285,6 +286,40 @@ account: ftmo-p1
 - Per-user Telegram auth (user ID allowlist)
 - Scheduled reminders
 - Screenshot/attachment commands
+
+---
+
+## Plan-vs-Execution Analytics
+
+The dashboard now includes a **Plan vs Execution** section that compares performance across two dimensions:
+
+**Dimension 1 — Formal plan linkage** (`trade_plan_id`):
+- Planned trades = trades with a linked TradePlan document
+- Unplanned trades = trades taken without a formal plan
+
+**Dimension 2 — Self-reported adherence** (`followed_plan`):
+- Followed = trader marked `followed_plan: yes` on the trade
+- Deviated = trader marked `followed_plan: no`
+
+For each group the panel shows: win rate, avg PnL, total PnL, profit factor.
+
+**Coaching signals** are pre-computed and shown below the comparison grids. Example:
+- "60% of your trades have a formal pre-trade plan linked."
+- "Planned trades outperform unplanned: win rate 65% vs 40%, avg PnL +$45 vs -$12 (+$57/trade edge from planning)."
+- "3 trades had a linked plan but were later marked as not followed — your clearest execution discipline cases."
+
+These signals also flow into the AI coaching prompt and the rule-based fallback diagnosis.
+
+**API:** `GET /api/v1/accounts/{id}/plan-adherence` (accepts same `from_date` / `to_date` filters as `/analytics`).
+
+**What requires data to unlock this:**
+- Link TradePlan documents to executed trades (Plans page → Link to trade)
+- Mark `followed_plan` on each trade after execution (Trade detail → Edit Journal)
+
+**Deferred for later:**
+- Planned R:R vs actual R comparison
+- Per-setup planned vs unplanned breakdown
+- Weekly plan adherence trend
 
 ---
 

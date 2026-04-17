@@ -12,6 +12,8 @@ from src.main.python.api.schemas.analytics import (
     AnalyticsSummaryResponse,
     FtmoCheckResponse,
     FtmoStatusResponse,
+    PlanAdherenceResponse,
+    plan_adherence_to_response,
     report_to_response,
     report_to_summary,
 )
@@ -110,6 +112,35 @@ def check_ftmo_and_notify(
         prev_status=prev_status,
         **status,
     )
+
+
+@router.get("/{account_id}/plan-adherence", response_model=PlanAdherenceResponse)
+def get_plan_adherence(
+    account_id: str,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Plan-vs-execution analytics for the account.
+
+    Returns two comparison dimensions:
+      1. Planned (has linked TradePlan) vs Unplanned — measures formal planning habit
+      2. Followed plan vs Deviated — measures execution discipline (self-reported)
+
+    Also returns pre-computed coaching signal sentences.
+    Accepts the same date filters as /analytics.
+    """
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    require_account(account_id, account_repo)
+    trades = trade_repo.get_by_account_filtered(
+        account_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    report = AccountAnalytics.compute_plan_adherence(trades)
+    return plan_adherence_to_response(report)
 
 
 @router.get("/{account_id}/report", response_model=AccountReportResponse)

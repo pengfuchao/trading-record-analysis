@@ -6,7 +6,7 @@ import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { api, Account, FtmoStatus } from "@/lib/api";
+import { api, Account, FtmoStatus, PlanAdherenceGroup, PlanAdherenceResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import StatCard from "@/components/StatCard";
@@ -408,6 +408,106 @@ function FtmoPanel({
   );
 }
 
+// ── Plan adherence panel ──────────────────────────────────────────────────────
+
+function GroupStats({ g, label, color }: { g: PlanAdherenceGroup; label: string; color: "blue" | "orange" | "green" | "red" }) {
+  const colorMap = {
+    blue:   "text-blue-400",
+    orange: "text-orange-400",
+    green:  "text-green-400",
+    red:    "text-red-400",
+  };
+  const labelColor = colorMap[color];
+  const pnlColor = (g.avg_pnl ?? 0) >= 0 ? "text-green-400" : "text-red-400";
+  const wr = g.win_rate != null ? `${(g.win_rate * 100).toFixed(1)}%` : "—";
+  const avgPnl = g.avg_pnl != null ? fmtPnl(g.avg_pnl) : "—";
+  const totalPnl = fmtPnl(g.total_pnl);
+  const pf = g.profit_factor != null ? g.profit_factor.toFixed(2) : "—";
+
+  return (
+    <div className="space-y-1.5">
+      <p className={`text-xs font-medium uppercase tracking-wider ${labelColor}`}>{label} ({g.count})</p>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <span className="text-gray-500">Win rate</span>
+        <span className="text-gray-100 font-mono">{wr}</span>
+        <span className="text-gray-500">Avg PnL</span>
+        <span className={`font-mono ${pnlColor}`}>{avgPnl}</span>
+        <span className="text-gray-500">Total PnL</span>
+        <span className={`font-mono ${(g.total_pnl ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>{totalPnl}</span>
+        <span className="text-gray-500">Prof. factor</span>
+        <span className="text-gray-100 font-mono">{pf}</span>
+      </div>
+    </div>
+  );
+}
+
+function PlanAdherencePanel({ data }: { data: PlanAdherenceResponse }) {
+  const showPlanLinkage  = data.planned_count >= 2 || data.unplanned_count >= 2;
+  const showFollowedPlan = data.followed_count >= 2 || data.deviated_count >= 2;
+
+  if (!showPlanLinkage && !showFollowedPlan && data.coaching_signals.length === 0) {
+    return (
+      <p className="text-xs text-gray-500">
+        No plan adherence data yet. Link trade plans to trades and mark followed_plan to unlock these insights.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Comparison grids */}
+      <div className={`grid gap-4 ${showPlanLinkage && showFollowedPlan ? "sm:grid-cols-2" : "grid-cols-1"}`}>
+        {/* Dimension 1: planned vs unplanned */}
+        {showPlanLinkage && (
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wider">
+              Plan linkage ({data.planned_pct != null ? `${data.planned_pct.toFixed(0)}% planned` : "—"})
+            </p>
+            <div className="grid grid-cols-2 gap-4 divide-x divide-gray-800">
+              <GroupStats g={data.planned}   label="Planned"   color="blue" />
+              <div className="pl-4">
+                <GroupStats g={data.unplanned} label="Unplanned" color="orange" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Dimension 2: followed vs deviated */}
+        {showFollowedPlan && (
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wider">
+              Plan adherence (self-reported)
+            </p>
+            <div className="grid grid-cols-2 gap-4 divide-x divide-gray-800">
+              <GroupStats g={data.followed} label="Followed"  color="green" />
+              <div className="pl-4">
+                <GroupStats g={data.deviated} label="Deviated" color="red" />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Coaching signals */}
+      {data.coaching_signals.length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-2">
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Key signals</p>
+          {data.coaching_signals.map((s, i) => (
+            <p key={i} className="text-xs text-gray-300 leading-relaxed">
+              <span className="text-blue-500 mr-1.5">›</span>{s}
+            </p>
+          ))}
+          {data.linked_but_deviated_count > 0 && (
+            <p className="text-xs text-amber-400 mt-1">
+              ⚠ {data.linked_but_deviated_count} linked plan(s) deviated from — review execution discipline.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Date helpers ───────────────────────────────────────────────────────────────
 
 function todayISO() {
@@ -461,6 +561,14 @@ export default function DashboardPage() {
   const { data: mistakes } = useSWR(
     accountId ? `mistakes-${accountId}-${fromDate}-${toDate}` : null,
     () => api.getMistakes(accountId, {
+      from_date: fromDate || undefined,
+      to_date: toDate || undefined,
+    })
+  );
+
+  const { data: planAdherence } = useSWR(
+    accountId ? `plan-adherence-${accountId}-${fromDate}-${toDate}` : null,
+    () => api.getPlanAdherence(accountId, {
       from_date: fromDate || undefined,
       to_date: toDate || undefined,
     })
@@ -664,6 +772,14 @@ export default function DashboardPage() {
               );
             })}
           </div>
+        </section>
+      )}
+
+      {/* ── Plan adherence ────────────────────────────────────────────────────── */}
+      {planAdherence && planAdherence.total_trades > 0 && (
+        <section>
+          <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Plan vs Execution</h2>
+          <PlanAdherencePanel data={planAdherence} />
         </section>
       )}
     </div>

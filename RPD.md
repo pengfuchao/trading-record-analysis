@@ -188,25 +188,26 @@ Strict key:value command intake via Telegram webhook. No natural-language parsin
 
 ---
 
-### 4.4 Plan-vs-Execution Analytics (Priority 4)
+### 4.4 Plan-vs-Execution Analytics (Priority 4) — IMPLEMENTED 2026-04-17
 
 **Purpose:** Close the loop between pre-trade planning and actual performance.
 
-**What is already in place:**
-- `followed_plan` boolean on each trade
-- `trade_plan_id` foreign key linking a trade to a pre-trade plan
-- Daily plans with `allowed_setups`, `behavioral_focus`, `max_trades`
+**What is implemented:**
 
-**What this feature adds:**
-- Analytics comparing followed-plan vs deviated trades (win rate, avg R, PnL)
-- Planned vs unplanned trade performance breakdown
-- Plan adherence score as a coaching input signal
-- "Has plan" vs "no plan" performance differential
-- Daily review → daily plan comparison (how many allowed setups were respected)
+- `GET /accounts/{id}/plan-adherence` — new endpoint returning two comparison dimensions:
+  - **Dimension 1 (trade_plan_id):** planned vs unplanned trade performance (win rate, avg PnL, profit factor)
+  - **Dimension 2 (followed_plan):** self-reported plan adherence vs deviations
+  - **Intersection:** linked-but-deviated count (wrote a plan, then broke it)
+  - Pre-computed coaching signal sentences returned in `coaching_signals[]`
+- **Dashboard section** — "Plan vs Execution" panel shows both dimensions side by side with coaching signals
+- **Coaching integration** — `CoachingContext` now carries plan adherence differentials; AI prompt includes a `PLAN ADHERENCE` section; fallback diagnosis/improvement prioritize adherence signals when data is present
+- No schema changes required — uses existing `trade_plan_id` and `followed_plan` fields
 
-**Why it matters:**
-- Currently the coaching engine uses raw mistake flags
-- Adding plan adherence signal improves the diagnostic quality: "your losses were 3x worse on unplanned trades" is more actionable than "you had 12 FOMO trades"
+**Deferred (next phase):**
+- Planned R:R vs actual R comparison (requires per-trade `planned_rr` → `actual_r_multiple` join)
+- Per-setup planned vs unplanned breakdown (small n problem until more data)
+- Weekly trend of plan adherence over time
+- Daily plan `allowed_setups` vs actual setups taken
 
 ---
 
@@ -269,10 +270,12 @@ Expansion Phase 3 (DONE 2026-04-17)
         - /status → account + FTMO snapshot
         - /ping → liveness check
 
-Expansion Phase 4
+Expansion Phase 4 (DONE 2026-04-17)
   └── Plan-vs-execution analytics
-        - followed_plan vs deviated breakdown
-        - plan adherence coaching signal
+        - GET /plan-adherence: planned vs unplanned + followed vs deviated
+        - coaching_signals[] pre-computed per-account
+        - dashboard Plan vs Execution section
+        - coaching context + AI prompt + fallback extended with adherence signals
 
 Later
   └── MT4 EA bridge

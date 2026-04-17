@@ -72,6 +72,57 @@ class PerformanceSummary:
 
 
 @dataclass
+class PlanAdherenceGroup:
+    """Performance stats for one slice of plan adherence (e.g. planned / unplanned)."""
+    count:        int
+    win_rate:     Optional[float]   # 0.0–1.0
+    avg_pnl:      Optional[float]   # average net PnL per trade
+    avg_r:        Optional[float]   # average R multiple
+    total_pnl:    float             # sum of net PnL
+    profit_factor: Optional[float]
+
+
+@dataclass
+class PlanAdherenceReport:
+    """
+    Plan-vs-execution analytics for one account over a date range.
+
+    Dimension 1 — formal plan linkage (trade_plan_id):
+      planned   = has a linked TradePlan document
+      unplanned = no linked TradePlan
+
+    Dimension 2 — self-reported adherence (followed_plan):
+      followed  = followed_plan is True
+      deviated  = followed_plan is False
+      not_tagged = followed_plan is None (not recorded)
+
+    Intersection:
+      linked_but_deviated = has trade_plan_id AND followed_plan is False
+    """
+    total_trades: int
+
+    # Dimension 1
+    planned_count:   int
+    unplanned_count: int
+    planned_pct:     Optional[float]        # planned_count / total_trades * 100
+    planned:         PlanAdherenceGroup = field(default_factory=lambda: PlanAdherenceGroup(0, None, None, None, 0.0, None))
+    unplanned:       PlanAdherenceGroup = field(default_factory=lambda: PlanAdherenceGroup(0, None, None, None, 0.0, None))
+
+    # Dimension 2
+    followed_count:  int = 0
+    deviated_count:  int = 0
+    not_tagged_count: int = 0
+    followed:        PlanAdherenceGroup = field(default_factory=lambda: PlanAdherenceGroup(0, None, None, None, 0.0, None))
+    deviated:        PlanAdherenceGroup = field(default_factory=lambda: PlanAdherenceGroup(0, None, None, None, 0.0, None))
+
+    # Intersection
+    linked_but_deviated_count: int = 0
+
+    # Pre-computed coaching signals (plain English sentences)
+    coaching_signals: List[str] = field(default_factory=list)
+
+
+@dataclass
 class AccountReport:
     # ── Identity ───────────────────────────────────────────────────────────
     account_id:          str

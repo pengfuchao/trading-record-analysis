@@ -217,6 +217,15 @@ export const api = {
     }),
   deleteReview: (accountId: string, reviewId: string) =>
     request<void>(`/accounts/${accountId}/daily-reviews/${reviewId}`, { method: "DELETE" }),
+
+  // Plan adherence analytics
+  getPlanAdherence: (accountId: string, params?: DateRange) => {
+    const q = new URLSearchParams();
+    if (params?.from_date) q.set("from_date", params.from_date);
+    if (params?.to_date) q.set("to_date", endOfDay(params.to_date)!);
+    const qs = q.toString();
+    return request<PlanAdherenceResponse>(`/accounts/${accountId}/plan-adherence${qs ? `?${qs}` : ""}`);
+  },
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -701,4 +710,37 @@ export interface MT5SyncStatus {
   enabled: boolean;
   last_sync_at?: string;
   last_runs: MT5SyncRunSummary[];
+}
+
+export interface PlanAdherenceGroup {
+  count: number;
+  win_rate?: number;
+  avg_pnl?: number;
+  avg_r?: number;
+  total_pnl: number;
+  profit_factor?: number;
+}
+
+export interface PlanAdherenceResponse {
+  total_trades: number;
+
+  // Dimension 1: formal plan linkage (trade_plan_id)
+  planned_count: number;
+  unplanned_count: number;
+  planned_pct?: number;
+  planned: PlanAdherenceGroup;
+  unplanned: PlanAdherenceGroup;
+
+  // Dimension 2: self-reported adherence (followed_plan)
+  followed_count: number;
+  deviated_count: number;
+  not_tagged_count: number;
+  followed: PlanAdherenceGroup;
+  deviated: PlanAdherenceGroup;
+
+  // Intersection
+  linked_but_deviated_count: number;
+
+  // Pre-computed coaching signals
+  coaching_signals: string[];
 }
