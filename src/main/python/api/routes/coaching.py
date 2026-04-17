@@ -95,7 +95,7 @@ def generate_weekly_review(
 
     try:
         get_notifier().notify_coaching_generated(
-            account_name=account.name or account_id,
+            account_name=account_id,
             from_date=from_date.date().isoformat() if from_date else None,
             to_date=to_date.date().isoformat() if to_date else None,
             result=result,

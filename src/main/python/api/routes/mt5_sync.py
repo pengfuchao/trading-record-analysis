@@ -148,7 +148,7 @@ def trigger_mt5_sync(
     )
 
     try:
-        get_notifier().notify_mt5_sync_result(account.name or account_id, result)
+        get_notifier().notify_mt5_sync_result(account_id, result)
     except Exception:
         pass  # notification failure must never affect sync response
 

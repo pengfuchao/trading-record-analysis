@@ -102,7 +102,7 @@ def check_ftmo_and_notify(
     )
     notification_sent, prev_status = get_notifier().check_and_notify_ftmo(
         account_id=account_id,
-        account_name=account.name or account_id,
+        account_name=account_id,
         status_data=status,
     )
     return FtmoCheckResponse(
