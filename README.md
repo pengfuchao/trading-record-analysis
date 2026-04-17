@@ -198,13 +198,93 @@ curl -X POST http://localhost:8000/api/v1/accounts/ftmo-p1/ftmo-check
 # Returns full FTMO status + notification_sent + prev_status fields.
 ```
 
-### What is deferred
+### What is deferred (Phase 1)
 
-- Telegram commands (`/status`, `/sync`, `/report`)
-- Trade plan creation from Telegram
-- Journal write-in or structured Telegram input
-- Interactive linking / approval flows
-- Per-account Telegram chat configuration
+- ~~Telegram commands~~ → implemented in Phase 2
+- ~~Trade plan creation from Telegram~~ → implemented in Phase 2
+- ~~Journal write-in~~ → implemented in Phase 2
+
+---
+
+## Telegram Structured Write-In — Phase 2
+
+Structured `/command` intake via Telegram webhook. Key:value format only — no natural-language parsing.
+
+### One-time webhook setup
+
+```bash
+curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+     -d "url=https://your-server.com/api/v1/telegram/webhook"
+
+# For local dev, expose with: ngrok http 8000
+```
+
+### Supported commands
+
+#### `/plan` — create a trade plan
+
+```
+/plan
+account: ftmo-p1
+symbol: XAUUSD
+direction: long
+setup: OB Retest
+strategy: London reversal
+bias: bullish
+thesis: reclaim + pullback
+entry_logic: retest OB
+sl_logic: below structure low
+tp_logic: prior high
+entry_zone: 3320-3325
+sl: 3312
+tp: 3345
+rr: 2.5
+a_plus: yes
+notes: only if NY open confirms
+```
+
+Only `account` is required. All other fields are optional.
+
+#### `/journal` — update trade enrichment
+
+```
+/journal
+account: ftmo-p1
+trade_id: <trade_id from trade log>
+followed_plan: yes
+setup_type: OB Retest
+exit_reason: TP hit
+lesson: patient entry, exited too early
+notes: should have held target
+problem_source: execution
+trade_quality: good trade
+mistakes: fomo, chasing
+```
+
+Both `account` and `trade_id` are required. `trade_id` is the internal UUID from the trade log.
+
+#### `/status` — account + FTMO snapshot
+
+```
+/status
+account: ftmo-p1
+```
+
+#### `/ping` — test connection
+
+```
+/ping
+```
+
+### What is deferred (Phase 2)
+
+- Natural-language parsing (free-form text → structured fields)
+- Multi-step conversational flows (e.g., confirm before creating)
+- Broker ticket → trade_id lookup
+- `/link` command (plan → trade auto-linking)
+- Per-user Telegram auth (user ID allowlist)
+- Scheduled reminders
+- Screenshot/attachment commands
 
 ---
 

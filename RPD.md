@@ -164,20 +164,27 @@ Push-only Telegram notifications. No bot commands or write capability.
 - FTMO state persistence across server restarts (current: in-memory only)
 - Daily plan reminders / EOD review prompts
 
-#### Phase B — Structured Write-In Mode (Priority 3)
-Bi-directional bot that lets the trader interact with the journal from Telegram.
+#### Phase B — Structured Write-In Mode (Priority 3) — IMPLEMENTED 2026-04-17
 
-Use cases:
-- "Create trade plan: XAUUSD long, OB retest, SL 2030, TP 2060, R:R 1.5" → creates a draft plan
-- "Add note to last trade: chased entry, should have waited for confirmation"
-- "How am I doing today?" → returns daily P&L, FTMO status
-- "Generate coaching review for this week"
+Strict key:value command intake via Telegram webhook. No natural-language parsing.
 
-Implementation path:
-- FastAPI webhook endpoint for Telegram Bot
-- NLP command parser (structured prompt → backend action)
-- Authentication: Telegram user ID allowlist
-- Start simple (keyword commands) before adding NLP
+**What is implemented:**
+- `POST /api/v1/telegram/webhook` — Telegram webhook receiver with chat ID guard
+- `services/telegram_command_parser.py` — pure parser: `parse_command()`, `coerce_bool()`, `coerce_float()`, `coerce_list()`
+- `/plan` command → creates a `TradePlan` via `TradePlanRepository`
+- `/journal` command → updates trade enrichment fields via `TradeRepository` (requires `trade_id`)
+- `/status` command → returns account + FTMO status snapshot via `AccountAnalytics.compute_ftmo_status()`
+- `/ping` command → liveness check
+- Validation error replies with usage examples
+- Not-found and unknown-command replies
+
+**Deferred to Phase C:**
+- Natural-language parsing
+- Multi-step conversational flows
+- Broker ticket → trade_id lookup
+- `/link` plan-to-trade command
+- Per-user Telegram auth (user ID allowlist)
+- Scheduled reminders and attachment commands
 
 ---
 
@@ -254,11 +261,13 @@ Expansion Phase 2 (DONE 2026-04-17)
         - Coaching review generated (AI only)
         - test-ping endpoint
 
-Expansion Phase 3
-  └── Telegram structured write-in
-        - trade plan creation
-        - journal notes
-        - account status queries
+Expansion Phase 3 (DONE 2026-04-17)
+  └── Telegram structured write-in — Phase 2
+        - webhook intake + chat ID guard
+        - /plan → create trade plan
+        - /journal → update trade enrichment
+        - /status → account + FTMO snapshot
+        - /ping → liveness check
 
 Expansion Phase 4
   └── Plan-vs-execution analytics
