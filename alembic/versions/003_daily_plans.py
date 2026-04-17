@@ -31,8 +31,8 @@ def upgrade() -> None:
         sa.Column("max_trades",         sa.Integer(),   nullable=True),
         sa.Column("behavioral_focus",   sa.Text(),      nullable=True),
         sa.Column("special_rule",       sa.Text(),      nullable=True),
-        sa.Column("created_at",         sa.DateTime(),  nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at",         sa.DateTime(),  nullable=False, server_default=sa.func.now()),
+        sa.Column("created_at",         sa.DateTime(),  nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at",         sa.DateTime(),  nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
     )
     op.create_index("ix_daily_plans_account_date", "daily_plans", ["account_id", "trading_date"], unique=True)
 
@@ -55,8 +55,8 @@ def upgrade() -> None:
         sa.Column("notes",              sa.Text(),      nullable=True),
         sa.Column("process_success",    sa.Boolean(),   nullable=True),
         sa.Column("pnl_success",        sa.Boolean(),   nullable=True),
-        sa.Column("created_at",         sa.DateTime(),  nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at",         sa.DateTime(),  nullable=False, server_default=sa.func.now()),
+        sa.Column("created_at",         sa.DateTime(),  nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at",         sa.DateTime(),  nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
     )
     op.create_index("ix_daily_reviews_account_date", "daily_reviews", ["account_id", "trading_date"], unique=True)
 

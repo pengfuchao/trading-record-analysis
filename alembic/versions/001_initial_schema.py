@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column("challenge_phase",   sa.String(20),  nullable=True),
         sa.Column("starting_balance",  sa.Float(),     nullable=True),
         sa.Column("account_currency",  sa.String(10),  nullable=False, server_default="USD"),
-        sa.Column("created_at",        sa.DateTime(),  nullable=False, server_default=sa.func.now()),
+        sa.Column("created_at",        sa.DateTime(),  nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
     )
 
     # ── trades ────────────────────────────────────────────────────────────────
@@ -117,8 +117,8 @@ def upgrade() -> None:
 
         # Audit / import tracking
         sa.Column("import_run_id", sa.String(100), nullable=True),
-        sa.Column("created_at",    sa.DateTime(),  nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at",    sa.DateTime(),  nullable=False, server_default=sa.func.now()),
+        sa.Column("created_at",    sa.DateTime(),  nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at",    sa.DateTime(),  nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
 
         # Foreign key
         sa.ForeignKeyConstraint(

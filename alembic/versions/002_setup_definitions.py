@@ -32,8 +32,8 @@ def upgrade() -> None:
         sa.Column("common_mistakes",        sa.Text(),      nullable=True),
         sa.Column("screenshot_examples",    sa.JSON(),                     nullable=True),
         sa.Column("notes",                  sa.Text(),      nullable=True),
-        sa.Column("created_at",             sa.DateTime(),  nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at",             sa.DateTime(),  nullable=False, server_default=sa.func.now()),
+        sa.Column("created_at",             sa.DateTime(),  nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at",             sa.DateTime(),  nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
     )
     op.create_index(
         "ix_setup_definitions_strategy_group",

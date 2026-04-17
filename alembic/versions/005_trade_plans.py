@@ -40,9 +40,9 @@ def upgrade() -> None:
         sa.Column("is_a_plus_setup",     sa.Boolean(),   nullable=True),
         sa.Column("notes",               sa.Text(),      nullable=True),
         sa.Column("created_at",          sa.DateTime(),  nullable=False,
-                  server_default=sa.text("NOW()")),
+                  server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.Column("updated_at",          sa.DateTime(),  nullable=False,
-                  server_default=sa.text("NOW()")),
+                  server_default=sa.text("CURRENT_TIMESTAMP")),
     )
     op.create_index("ix_trade_plans_account",        "trade_plans", ["account_id"])
     op.create_index("ix_trade_plans_account_status", "trade_plans", ["account_id", "status"])
