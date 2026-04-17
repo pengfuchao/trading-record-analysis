@@ -304,6 +304,14 @@ class FtmoStatusResponse(BaseModel):
 
 # ── Import history ─────────────────────────────────────────────────────────────
 
+class FtmoCheckResponse(FtmoStatusResponse):
+    """FtmoStatusResponse extended with notification metadata for /ftmo-check."""
+    notification_sent: bool
+    prev_status: Optional[str]
+
+
+# ── Import history ─────────────────────────────────────────────────────────────
+
 class ImportHistoryEntry(BaseModel):
     """One import batch summary."""
     import_run_id: str

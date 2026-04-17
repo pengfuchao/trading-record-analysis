@@ -21,6 +21,7 @@ from src.main.python.api.schemas.coaching import (
 from src.main.python.models.db_models import CoachingReviewModel
 from src.main.python.services.ai_coach import AICoachService
 from src.main.python.services.coaching_review_repository import CoachingReviewRepository
+from src.main.python.services.telegram_notifier import get_notifier
 
 router = APIRouter(prefix="/accounts", tags=["coaching"])
 
@@ -91,6 +92,16 @@ def generate_weekly_review(
         error_message=result.error_message,
     )
     coaching_repo.save(orm)
+
+    try:
+        get_notifier().notify_coaching_generated(
+            account_name=account.name or account_id,
+            from_date=from_date.date().isoformat() if from_date else None,
+            to_date=to_date.date().isoformat() if to_date else None,
+            result=result,
+        )
+    except Exception:
+        pass  # notification failure must never affect coaching response
 
     return WeeklyReviewResponse(
         review_id=review_id,

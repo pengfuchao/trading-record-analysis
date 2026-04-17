@@ -146,20 +146,23 @@ Added `/mt5-sync` page (accessible from sidebar) with:
 
 **Two phases, different value:**
 
-#### Phase A — Notification Mode (Priority 2)
-Push-only notifications to a personal Telegram bot. No write capability needed.
+#### Phase A — Notification Mode (Priority 2) — IMPLEMENTED 2026-04-17
 
-Trigger events:
-- FTMO daily loss limit approaching (e.g., 70%, 90% consumed)
-- FTMO overall drawdown approaching limit
-- Import/sync completed (N new trades imported)
-- AI coaching review generated
-- Daily plan reminder (morning) / review prompt (EOD)
+Push-only Telegram notifications. No bot commands or write capability.
 
-Implementation:
-- Simple Telegram Bot API wrapper (POST to `sendMessage`)
-- Background job watches for trigger conditions
-- Configurable thresholds per account
+**What is implemented:**
+- `TelegramNotifier` service (`services/telegram_notifier.py`) — thin singleton wrapping `requests.post` to Telegram Bot API
+- MT5 sync result notification (success + failure) — fires after every manual sync
+- FTMO risk/status-change alert — triggered via `POST /accounts/{id}/ftmo-check`; in-memory state change deduplication prevents spam
+- Coaching review notification — fires after successful AI-generated reviews only
+- Test ping endpoint: `POST /api/v1/telegram/test-ping`
+- Config: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, optional `TELEGRAM_ENABLED=false` flag
+
+**Deferred to Phase B:**
+- Background/scheduled FTMO checks (configure externally using `POST /ftmo-check`)
+- Per-account Telegram chat ID configuration
+- FTMO state persistence across server restarts (current: in-memory only)
+- Daily plan reminders / EOD review prompts
 
 #### Phase B — Structured Write-In Mode (Priority 3)
 Bi-directional bot that lets the trader interact with the journal from Telegram.
@@ -244,11 +247,12 @@ Expansion Phase 2 (NEXT)
         - open position tracking
         - DEAL_ENTRY_INOUT (partial closes)
 
-Expansion Phase 2
-  └── Telegram notifications (push-only)
-        - FTMO limit warnings
-        - import/sync success
-        - daily prompts
+Expansion Phase 2 (DONE 2026-04-17)
+  └── Telegram notifications — Phase 1 (push-only)
+        - MT5 sync success/failure
+        - FTMO risk/status-change alerts
+        - Coaching review generated (AI only)
+        - test-ping endpoint
 
 Expansion Phase 3
   └── Telegram structured write-in

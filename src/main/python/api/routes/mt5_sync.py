@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.main.python.api.dependencies import get_db, require_account
+from src.main.python.services.telegram_notifier import get_notifier
 from src.main.python.api.schemas.mt5_sync import (
     MT5ConfigCreate,
     MT5ConfigResponse,
@@ -106,8 +107,7 @@ def trigger_mt5_sync(
     The request blocks until the sync completes (typically a few seconds).
     Manual enrichment (setup_type, notes, flags, etc.) is always preserved.
     """
-    require_account(account_id, account_repo)
-
+    account = require_account(account_id, account_repo)
     svc = MT5SyncService(db)
 
     # Config must exist
@@ -146,6 +146,11 @@ def trigger_mt5_sync(
         to_date=to_date,
         triggered_by="manual",
     )
+
+    try:
+        get_notifier().notify_mt5_sync_result(account.name or account_id, result)
+    except Exception:
+        pass  # notification failure must never affect sync response
 
     return MT5SyncResponse(
         run_id=result.run_id,

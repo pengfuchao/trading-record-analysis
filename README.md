@@ -30,6 +30,7 @@ A full-stack web app that gives you a structured way to:
 | AI coaching (weekly review via Claude API, rule-based fallback) | Done |
 | Coaching review history | Done |
 | MT5 live sync — Phase 1 (config UI, manual sync trigger, run history, audit log) | Done |
+| Telegram notifications — Phase 1 (MT5 sync result, FTMO risk alerts, coaching generated) | Done |
 
 ## Tech Stack
 
@@ -161,14 +162,60 @@ Phase 1 is backend-only. Use the API directly (no frontend UI yet).
 - Coaching review covers closed trades only; no open position awareness
 - Setup library is manually managed; no auto-population from imported trades
 
+## Telegram Notifications — Phase 1
+
+Telegram push notifications are implemented. No interactive commands or write-in yet.
+
+### Events covered
+
+| Event | When |
+|---|---|
+| MT5 sync success | After every successful manual sync — shows new/updated/skipped counts |
+| MT5 sync failure | After any sync error — shows error message |
+| FTMO risk alert | When `account_status` changes (SAFE → AT_RISK → BREACHED or back) |
+| Coaching review | After a successful AI-generated weekly review |
+
+### Required environment variables
+
+```bash
+TELEGRAM_BOT_TOKEN=7xxxxxxxxx:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TELEGRAM_CHAT_ID=-1001234567890
+# TELEGRAM_ENABLED=false   # uncomment to silence without removing tokens
+```
+
+### Test integration
+
+```bash
+curl -X POST http://localhost:8000/api/v1/telegram/test-ping
+# → {"sent": true, "message": "ping sent"}
+```
+
+### Trigger FTMO check (for cron/scheduler)
+
+```bash
+curl -X POST http://localhost:8000/api/v1/accounts/ftmo-p1/ftmo-check
+# Only sends Telegram alert if account_status has changed since last check.
+# Returns full FTMO status + notification_sent + prev_status fields.
+```
+
+### What is deferred
+
+- Telegram commands (`/status`, `/sync`, `/report`)
+- Trade plan creation from Telegram
+- Journal write-in or structured Telegram input
+- Interactive linking / approval flows
+- Per-account Telegram chat configuration
+
+---
+
 ## Future Roadmap
 
 See `RPD.md` for full product roadmap. Summary:
 
 | Priority | Feature |
 |---|---|
-| 1 | MT5 live sync Phase 2 (background polling, open positions, frontend UI) |
-| 2 | Telegram notifications (FTMO warnings, import success, coaching generated, daily summary) |
-| 3 | Telegram structured write-in (create plans, add journal notes, query account status via Telegram) |
+| 1 | MT5 live sync Phase 2 (background polling, open positions) |
+| 2 | Telegram notifications — **Done (Phase 1)** |
+| 3 | Telegram structured write-in (create plans, add journal notes, query account status) |
 | 4 | Plan-vs-execution analytics (followed_plan signal, planned vs unplanned trade performance) |
 | Later | AI provider abstraction (Anthropic / OpenAI / Gemini switching) |
