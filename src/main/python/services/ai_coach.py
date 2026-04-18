@@ -422,7 +422,7 @@ class AICoachService:
                 f"Before your next planned trade, re-read the plan at entry time and confirm you are "
                 f"executing at the specified level — over-analysis or hesitation may be causing slippage from the plan."
             )
-        elif ctx.deviated_count > 0 and ctx.followed_plan_rate is not None and ctx.followed_plan_rate < 80:
+        elif ctx.deviated_count > 0 and ctx.followed_plan_rate is not None and ctx.followed_plan_rate < 80 and not followed_worse:
             improvement = (
                 f"Bring plan adherence above 80% (currently {ctx.followed_plan_rate}%). "
                 f"After each trade, immediately tag whether it followed the plan or deviated."

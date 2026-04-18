@@ -520,11 +520,4 @@ class AccountAnalytics:
                     f"costing ${d_cost:.2f} total."
                 )
 
-        # Signal 4: linked but deviated — most actionable insight
-        if linked_but_deviated_count > 0:
-            signals.append(
-                f"{linked_but_deviated_count} trade(s) had a linked plan but were later marked "
-                f"as not followed — these are your clearest execution discipline cases."
-            )
-
         return signals
