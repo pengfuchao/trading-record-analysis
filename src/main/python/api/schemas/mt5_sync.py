@@ -60,9 +60,39 @@ class MT5SyncResponse(BaseModel):
     trades_new: int
     trades_updated: int
     trades_skipped: int
+    open_positions_count: int = 0
     error_message: Optional[str]
     started_at: datetime
     completed_at: Optional[datetime]
+
+
+class OpenPositionResponse(BaseModel):
+    """One open MT5 position as of the last sync."""
+    account_id: str
+    ticket: int
+    symbol: str
+    direction: str                  # "long" | "short"
+    lot_size: float
+    entry_price: float
+    current_price: Optional[float]
+    stop_loss: Optional[float]
+    take_profit: Optional[float]
+    floating_pnl: Optional[float]
+    opened_at: Optional[datetime]
+    magic: Optional[int]
+    comment: Optional[str]
+    source: str
+    synced_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class OpenPositionsResponse(BaseModel):
+    """Response for GET /accounts/{id}/open-positions."""
+    account_id: str
+    count: int
+    positions: List[OpenPositionResponse]
 
 
 class MT5SyncRunSummary(BaseModel):

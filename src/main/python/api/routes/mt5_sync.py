@@ -28,6 +28,8 @@ from src.main.python.api.schemas.mt5_sync import (
     MT5SyncResponse,
     MT5SyncRunSummary,
     MT5SyncStatusResponse,
+    OpenPositionResponse,
+    OpenPositionsResponse,
 )
 from src.main.python.services.account_repository import AccountRepository
 from src.main.python.services.mt5_connector import MT5ConnectionConfig
@@ -161,6 +163,7 @@ def trigger_mt5_sync(
         trades_new=result.trades_new,
         trades_updated=result.trades_updated,
         trades_skipped=result.trades_skipped,
+        open_positions_count=result.open_positions_count,
         error_message=result.error_message,
         started_at=result.started_at,
         completed_at=result.completed_at,
@@ -197,4 +200,32 @@ def get_sync_status(
         enabled=cfg.enabled if cfg else False,
         last_sync_at=last_sync_at,
         last_runs=[MT5SyncRunSummary.model_validate(r) for r in runs],
+    )
+
+
+# ── Open positions endpoint ────────────────────────────────────────────────────
+
+@router.get(
+    "/accounts/{account_id}/open-positions",
+    response_model=OpenPositionsResponse,
+    summary="Get currently open MT5 positions for an account",
+)
+def get_open_positions(
+    account_id: str,
+    account_repo: AccountRepository = Depends(_get_account_repo),
+    svc: MT5SyncService = Depends(_get_sync_service),
+) -> OpenPositionsResponse:
+    """
+    Returns the open-positions snapshot captured during the last successful MT5 sync.
+    This list is replaced wholesale on every sync run — positions that have closed
+    since the last sync will no longer appear here.
+
+    Returns an empty list if no sync has been run yet or no positions were open.
+    """
+    require_account(account_id, account_repo)
+    rows = svc.get_open_positions(account_id)
+    return OpenPositionsResponse(
+        account_id=account_id,
+        count=len(rows),
+        positions=[OpenPositionResponse.model_validate(r) for r in rows],
     )

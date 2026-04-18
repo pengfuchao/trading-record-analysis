@@ -368,6 +368,39 @@ class MT5SyncConfigModel(Base):
     )
 
 
+class MT5OpenPositionModel(Base):
+    """
+    Snapshot of currently open positions fetched from MT5.
+    Replaced wholesale on every successful sync — stale positions are deleted.
+    PK is (account_id, ticket) — ticket is the MT5 position identifier, unique per account.
+    """
+    __tablename__ = "mt5_open_positions"
+
+    account_id:    Mapped[str]            = mapped_column(
+        String(100),
+        ForeignKey("accounts.account_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    ticket:        Mapped[int]            = mapped_column(Integer, primary_key=True)
+    symbol:        Mapped[str]            = mapped_column(String(20),  nullable=False)
+    direction:     Mapped[str]            = mapped_column(String(10),  nullable=False)   # "long" | "short"
+    lot_size:      Mapped[float]          = mapped_column(Float,       nullable=False)
+    entry_price:   Mapped[float]          = mapped_column(Float,       nullable=False)
+    current_price: Mapped[Optional[float]]= mapped_column(Float,       nullable=True)
+    stop_loss:     Mapped[Optional[float]]= mapped_column(Float,       nullable=True)
+    take_profit:   Mapped[Optional[float]]= mapped_column(Float,       nullable=True)
+    floating_pnl:  Mapped[Optional[float]]= mapped_column(Float,       nullable=True)
+    opened_at:     Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    magic:         Mapped[Optional[int]]  = mapped_column(Integer,     nullable=True)
+    comment:       Mapped[Optional[str]]  = mapped_column(String(255), nullable=True)
+    source:        Mapped[str]            = mapped_column(String(20),  nullable=False, default="mt5")
+    synced_at:     Mapped[datetime]       = mapped_column(DateTime(timezone=False), nullable=False)
+
+    __table_args__ = (
+        Index("ix_mt5_open_positions_account", "account_id"),
+    )
+
+
 class MT5SyncRunModel(Base):
     """Audit log: one row per sync attempt (manual or scheduled)."""
     __tablename__ = "mt5_sync_runs"

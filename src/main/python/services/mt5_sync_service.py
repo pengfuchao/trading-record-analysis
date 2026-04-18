@@ -25,10 +25,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from src.main.python.models.db_models import MT5SyncConfigModel, MT5SyncRunModel
+from src.main.python.models.db_models import MT5OpenPositionModel, MT5SyncConfigModel, MT5SyncRunModel
 from src.main.python.models.enums import Direction, Platform
 from src.main.python.models.trade import Trade
 from src.main.python.services.derived_field_calculator import DerivedFieldCalculator
@@ -53,6 +53,7 @@ class SyncResult:
     trades_new: int = 0
     trades_updated: int = 0
     trades_skipped: int = 0
+    open_positions_count: int = 0
     error_message: Optional[str] = None
     started_at: datetime = field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
@@ -167,6 +168,11 @@ class MT5SyncService:
                     duplicate_strategy="update_broker",
                 )
 
+                # Refresh open positions snapshot
+                open_pos = conn.fetch_open_positions()
+                self._refresh_open_positions(account_id, open_pos)
+                result.open_positions_count = len(open_pos)
+
             result.trades_new = counts.new
             result.trades_updated = counts.updated
             result.trades_skipped = counts.skipped
@@ -257,6 +263,61 @@ class MT5SyncService:
             trades.append(trade)
 
         return trades
+
+    def _refresh_open_positions(
+        self,
+        account_id: str,
+        raw_positions: List[Dict[str, Any]],
+    ) -> None:
+        """
+        Replace the open-positions snapshot for this account.
+
+        Deletes all existing rows for the account, then inserts the fresh list.
+        This ensures positions that closed since the last sync are removed.
+        The caller's session is flushed but not committed.
+        """
+        synced_at = datetime.utcnow()
+
+        # Delete the current snapshot for this account
+        self._session.execute(
+            delete(MT5OpenPositionModel).where(MT5OpenPositionModel.account_id == account_id)
+        )
+
+        # Insert new rows
+        for pos in raw_positions:
+            row = MT5OpenPositionModel(
+                account_id=account_id,
+                ticket=pos["ticket"],
+                symbol=pos["symbol"],
+                direction=pos["direction"],
+                lot_size=pos["lot_size"],
+                entry_price=pos["entry_price"],
+                current_price=pos.get("current_price"),
+                stop_loss=pos.get("stop_loss"),
+                take_profit=pos.get("take_profit"),
+                floating_pnl=pos.get("floating_pnl"),
+                opened_at=pos.get("opened_at"),
+                magic=pos.get("magic"),
+                comment=pos.get("comment") or "",
+                source="mt5",
+                synced_at=synced_at,
+            )
+            self._session.add(row)
+
+        self._session.flush()
+        logger.info(
+            "Refreshed %d open position(s) for account=%s",
+            len(raw_positions), account_id,
+        )
+
+    def get_open_positions(self, account_id: str) -> List[MT5OpenPositionModel]:
+        """Return all current open positions for an account, ordered by opened_at."""
+        stmt = (
+            select(MT5OpenPositionModel)
+            .where(MT5OpenPositionModel.account_id == account_id)
+            .order_by(MT5OpenPositionModel.opened_at.asc())
+        )
+        return list(self._session.execute(stmt).scalars().all())
 
 
 # ── Password loader helper ─────────────────────────────────────────────────────

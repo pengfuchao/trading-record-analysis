@@ -102,16 +102,38 @@ Added `/mt5-sync` page (accessible from sidebar) with:
 - **Connection config form**: login, broker server, UTC offset, terminal path; save/update button
 - **Password note**: computed env var name shown in UI (`MT5_<ACCOUNT_ID_UPPER>_PASSWORD`)
 - **Manual sync trigger**: date range picker + Sync Now button with loading state
-- **Sync result card**: new/updated/skipped/deals_fetched counts or error message
+- **Sync result card**: new/updated/skipped/deals_fetched/open_positions counts or error message
 - **Run history table**: last 10 runs with started_at, status badge, date range, counts, error
 - **Last sync time**: shown prominently in header of run history section
-- SWR invalidation after successful sync (trades, analytics, FTMO, mistakes)
+- SWR invalidation after successful sync (trades, analytics, FTMO, mistakes, open-positions)
+
+#### Phase A — Deeper Sync: Open Positions (IMPLEMENTED 2026-04-18)
+
+Each manual MT5 sync now also fetches currently open positions via `mt5.positions_get()`.
+
+**What is implemented:**
+- `MT5OpenPositionModel` ORM model + migration 009 (`mt5_open_positions` table)
+- `MT5Connector.fetch_open_positions()` — calls `mt5.positions_get()`, returns normalized dicts
+- `MT5SyncService._refresh_open_positions()` — deletes the previous snapshot and inserts the fresh list (replace-wholesale strategy ensures closed positions disappear after the next sync)
+- `MT5SyncService.get_open_positions()` — query helper used by the API
+- `SyncResult.open_positions_count` — surfaced in the sync response
+- `GET /accounts/{id}/open-positions` — returns the latest snapshot as `OpenPositionsResponse`
+- `/mt5-sync` page: new **Open Positions** section — table with symbol, side, lots, entry, current price, SL/TP, floating PnL, opened_at, and a total floating PnL footer row
+
+**Idempotency / staleness:**
+- PK is `(account_id, ticket)` — same position ticket across syncs maps to the same row
+- On every sync, all rows for the account are deleted then re-inserted from the live MT5 list
+- A closed position disappears automatically after the next sync — no manual cleanup needed
+
+**What remains deferred (Phase 2):**
+- Background polling (APScheduler) — `polling_interval_minutes` column exists as placeholder
+- DEAL_ENTRY_INOUT (partial close/hedge reconstruction)
+- Richer real-time position monitoring or streaming
 
 #### Phase 2 — Scheduled Background Polling (DEFERRED)
 
 - APScheduler periodic background sync (closed trades + open positions)
 - `polling_interval_minutes` DB column already exists as placeholder — no migration needed
-- Open position tracking (`mt5.positions_get()`) — needs separate schema design
 - DEAL_ENTRY_INOUT (partial closes/hedges) handling
 
 **Why MT5 first, not MT4:**
@@ -249,10 +271,17 @@ Expansion Phase 1 (DONE)
         - sync audit log
         - /mt5-sync page (config form, sync trigger, run history)
 
+Expansion Phase A (DONE 2026-04-18)
+  └── MT5 deeper sync — open positions
+        - MT5OpenPositionModel + migration 009
+        - MT5Connector.fetch_open_positions()
+        - MT5SyncService.refresh/get open positions
+        - GET /accounts/{id}/open-positions endpoint
+        - /mt5-sync open positions table (live floating PnL)
+
 Expansion Phase 2 (NEXT)
   └── MT5 live sync Phase 2
         - background scheduler (APScheduler)
-        - open position tracking
         - DEAL_ENTRY_INOUT (partial closes)
 
 Expansion Phase 2 (DONE 2026-04-17)
@@ -300,7 +329,7 @@ Later
 
 | Constraint | Notes |
 |---|---|
-| MT5 live sync is Phase 1 only (backend, manual trigger) | Phase 1 sync is backend-only; use `POST /api/v1/accounts/{id}/mt5-sync`. Requires Windows + MetaTrader5 package. Phase 2 (scheduled, frontend UI) is deferred. |
+| MT5 live sync Phase A (open positions) implemented | Manual sync now also fetches `mt5.positions_get()` and persists to `mt5_open_positions`. View via `GET /api/v1/accounts/{id}/open-positions` or the `/mt5-sync` page. Background polling and partial-close handling are still deferred. |
 | No authentication | Single-user local deployment. Do not expose to public internet without adding auth. |
 | Coaching quality depends on trade data quality | Sparse trades or missing setup_type values reduce coaching signal. |
 | MT4 live sync path is fragile | EA-based bridges are platform-version-sensitive and hard to maintain. |

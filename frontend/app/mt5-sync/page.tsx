@@ -9,6 +9,7 @@ import {
   MT5ConfigCreate,
   MT5SyncResponse,
   MT5SyncStatus,
+  OpenPositionsResponse,
 } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
@@ -72,6 +73,13 @@ export default function MT5SyncPage() {
   const { data: status, mutate: refreshStatus } = useSWR<MT5SyncStatus>(
     accountId ? `mt5-status-${accountId}` : null,
     () => api.getMt5Status(accountId!, 10),
+    { revalidateOnFocus: false }
+  );
+
+  // ── Open positions SWR ───────────────────────────────────────────────────────
+  const { data: openPositions, mutate: refreshOpenPositions } = useSWR<OpenPositionsResponse>(
+    accountId ? `open-positions-${accountId}` : null,
+    () => api.getOpenPositions(accountId!),
     { revalidateOnFocus: false }
   );
 
@@ -145,8 +153,9 @@ export default function MT5SyncPage() {
       });
       setSyncResult(result);
 
-      // Refresh status and invalidate account-scoped caches
+      // Refresh status, open positions, and invalidate account-scoped caches
       await refreshStatus();
+      await refreshOpenPositions();
       const pfx = (p: string) => (k: unknown) =>
         typeof k === "string" && k.startsWith(p);
       mutate(pfx(`trades-${accountId}`));
@@ -391,7 +400,7 @@ export default function MT5SyncPage() {
             </div>
 
             {syncResult.status === "success" && (
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-5 gap-4">
                 <div className="text-center">
                   <p className="text-2xl font-semibold text-green-400">{syncResult.trades_new}</p>
                   <p className="text-xs text-gray-500 mt-1">New trades</p>
@@ -407,6 +416,10 @@ export default function MT5SyncPage() {
                 <div className="text-center">
                   <p className="text-2xl font-semibold text-gray-300">{syncResult.deals_fetched}</p>
                   <p className="text-xs text-gray-500 mt-1">Deals fetched</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-semibold text-yellow-400">{syncResult.open_positions_count}</p>
+                  <p className="text-xs text-gray-500 mt-1">Open now</p>
                 </div>
               </div>
             )}
@@ -474,6 +487,101 @@ export default function MT5SyncPage() {
                   </tr>
                 ))}
               </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Section 4: Open Positions ───────────────────────────────────────── */}
+      <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Open Positions</p>
+          {openPositions && openPositions.count > 0 && (
+            <span className="text-xs text-gray-500">
+              {openPositions.count} position{openPositions.count !== 1 ? "s" : ""} — as of last sync
+            </span>
+          )}
+        </div>
+
+        {!openPositions || openPositions.count === 0 ? (
+          <p className="text-sm text-gray-500 px-5 py-4">
+            No open positions found. Run a sync to capture current open positions from MT5.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 text-xs uppercase tracking-wider border-b border-gray-800">
+                  <th className="text-left px-4 py-2">Symbol</th>
+                  <th className="text-left px-4 py-2">Side</th>
+                  <th className="text-right px-4 py-2">Lots</th>
+                  <th className="text-right px-4 py-2">Entry</th>
+                  <th className="text-right px-4 py-2">Current</th>
+                  <th className="text-right px-4 py-2">SL</th>
+                  <th className="text-right px-4 py-2">TP</th>
+                  <th className="text-right px-4 py-2">Float PnL</th>
+                  <th className="text-left px-4 py-2">Opened</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {openPositions.positions.map((pos) => {
+                  const pnlCls = pos.floating_pnl == null
+                    ? "text-gray-400"
+                    : pos.floating_pnl >= 0
+                    ? "text-green-400"
+                    : "text-red-400";
+                  const sideCls = pos.direction === "long"
+                    ? "text-blue-400"
+                    : "text-orange-400";
+                  return (
+                    <tr key={pos.ticket} className="hover:bg-gray-800/30 transition-colors">
+                      <td className="px-4 py-2.5 font-medium text-gray-100">{pos.symbol}</td>
+                      <td className={`px-4 py-2.5 font-medium ${sideCls}`}>
+                        {pos.direction.toUpperCase()}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-gray-300">{pos.lot_size}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-gray-300">{pos.entry_price}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-gray-200">
+                        {pos.current_price ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-gray-500">
+                        {pos.stop_loss ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-gray-500">
+                        {pos.take_profit ?? "—"}
+                      </td>
+                      <td className={`px-4 py-2.5 text-right font-mono font-medium ${pnlCls}`}>
+                        {pos.floating_pnl != null
+                          ? `${pos.floating_pnl >= 0 ? "+" : ""}${pos.floating_pnl.toFixed(2)}`
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-gray-400 whitespace-nowrap">
+                        {pos.opened_at ? new Date(pos.opened_at).toLocaleString() : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {openPositions.count > 1 && (
+                <tfoot>
+                  <tr className="border-t border-gray-700 bg-gray-800/30">
+                    <td colSpan={7} className="px-4 py-2 text-xs text-gray-500 text-right">
+                      Total floating PnL
+                    </td>
+                    <td className={`px-4 py-2 text-right font-mono font-semibold text-sm ${
+                      openPositions.positions.reduce((s, p) => s + (p.floating_pnl ?? 0), 0) >= 0
+                        ? "text-green-400"
+                        : "text-red-400"
+                    }`}>
+                      {(() => {
+                        const total = openPositions.positions.reduce((s, p) => s + (p.floating_pnl ?? 0), 0);
+                        return `${total >= 0 ? "+" : ""}${total.toFixed(2)}`;
+                      })()}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         )}

@@ -156,6 +156,54 @@ class MT5Connector:
             "login":        info.login,
         }
 
+    def fetch_open_positions(self) -> List[Dict[str, Any]]:
+        """
+        Return all currently open positions from the connected MT5 terminal.
+
+        Uses mt5.positions_get() which returns live TradePosition objects.
+        Each returned dict has keys:
+            ticket        int
+            symbol        str
+            direction     str    — "long" (buy) or "short" (sell)
+            lot_size      float
+            entry_price   float
+            current_price float
+            stop_loss     float | None
+            take_profit   float | None
+            floating_pnl  float
+            opened_at     datetime  (UTC)
+            magic         int
+            comment       str
+        """
+        raw = mt5.positions_get()
+        if raw is None:
+            raise MT5ConnectionError(
+                f"mt5.positions_get() returned None: {mt5.last_error()}"
+            )
+        positions: List[Dict[str, Any]] = []
+        for p in raw:
+            # position type: 0 = buy, 1 = sell
+            direction = "long" if getattr(p, "type", 0) == 0 else "short"
+            sl = getattr(p, "sl", 0.0) or None
+            tp = getattr(p, "tp", 0.0) or None
+            opened_at = datetime.utcfromtimestamp(p.time) if p.time else None
+            positions.append({
+                "ticket":        p.ticket,
+                "symbol":        p.symbol,
+                "direction":     direction,
+                "lot_size":      p.volume,
+                "entry_price":   p.price_open,
+                "current_price": p.price_current,
+                "stop_loss":     sl,
+                "take_profit":   tp,
+                "floating_pnl":  p.profit,
+                "opened_at":     opened_at,
+                "magic":         getattr(p, "magic", 0),
+                "comment":       getattr(p, "comment", "") or "",
+            })
+        logger.info("Fetched %d open positions from MT5", len(positions))
+        return positions
+
     def fetch_deals(self, from_date: datetime, to_date: datetime) -> List[Any]:
         """
         Fetch all historical deals in the given date range.

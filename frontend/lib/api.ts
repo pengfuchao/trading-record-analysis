@@ -195,6 +195,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  getOpenPositions: (accountId: string) =>
+    request<OpenPositionsResponse>(`/accounts/${accountId}/open-positions`),
 
   // Daily Reviews
   listReviews: (accountId: string, params?: DateRange) => {
@@ -683,9 +685,34 @@ export interface MT5SyncResponse {
   trades_new: number;
   trades_updated: number;
   trades_skipped: number;
+  open_positions_count: number;
   error_message?: string;
   started_at: string;
   completed_at?: string;
+}
+
+export interface OpenPosition {
+  account_id: string;
+  ticket: number;
+  symbol: string;
+  direction: string;
+  lot_size: number;
+  entry_price: number;
+  current_price?: number;
+  stop_loss?: number;
+  take_profit?: number;
+  floating_pnl?: number;
+  opened_at?: string;
+  magic?: number;
+  comment?: string;
+  source: string;
+  synced_at: string;
+}
+
+export interface OpenPositionsResponse {
+  account_id: string;
+  count: number;
+  positions: OpenPosition[];
 }
 
 export interface MT5SyncRunSummary {
