@@ -469,6 +469,11 @@ function PlanAdherencePanel({ data }: { data: PlanAdherenceResponse }) {
                 <GroupStats g={data.unplanned} label="Unplanned" color="orange" />
               </div>
             </div>
+            {(data.planned_count < 3 || data.unplanned_count < 3) && (
+              <p className="text-xs text-gray-600 italic pt-1">
+                Not enough data for a reliable comparison yet.
+              </p>
+            )}
           </div>
         )}
 
@@ -484,6 +489,11 @@ function PlanAdherencePanel({ data }: { data: PlanAdherenceResponse }) {
                 <GroupStats g={data.deviated} label="Deviated" color="red" />
               </div>
             </div>
+            {(data.followed_count < 3 || data.deviated_count < 3) && (
+              <p className="text-xs text-gray-600 italic pt-1">
+                Not enough data for a reliable comparison yet.
+              </p>
+            )}
           </div>
         )}
       </div>

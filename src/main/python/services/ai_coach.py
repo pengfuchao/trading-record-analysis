@@ -361,6 +361,23 @@ class AICoachService:
                 f"underperform by ${diff:.2f}/trade on average. "
                 f"Closing this gap is the highest-leverage improvement available."
             )
+        elif planned_worse:
+            diff = (ctx.unplanned_avg_pnl or 0) - (ctx.planned_avg_pnl or 0)
+            diagnosis = (
+                f"Unplanned trades are outperforming planned ones by ${diff:.2f}/trade on average. "
+                f"This can mean the formal plans are being applied with less conviction than they "
+                f"were written with, or that over-analysis is causing hesitation. "
+                f"Review whether your planned entries are being executed at the intended levels."
+            )
+        elif ctx.linked_but_deviated_count > 0:
+            n = ctx.linked_but_deviated_count
+            trade_word = "trades" if n != 1 else "trade"
+            diagnosis = (
+                f"You had {n} {trade_word} with a linked plan that "
+                f"{'were' if n != 1 else 'was'} then deviated from. "
+                f"The gap between planning and execution is the most actionable signal in your data — "
+                f"identify the specific rule you broke in each case before the next session."
+            )
         elif ctx.followed_plan_rate is not None and ctx.followed_plan_rate < 70:
             diagnosis = (
                 f"Plan adherence is low at {ctx.followed_plan_rate}% — execution discipline "
@@ -381,7 +398,7 @@ class AICoachService:
             )
 
         # ── Improvement ────────────────────────────────────────────────────────
-        if ctx.linked_but_deviated_count > 0 and ctx.deviated_avg_pnl is not None:
+        if ctx.linked_but_deviated_count > 0:
             cost = ctx.deviated_total_pnl
             cost_str = f" (total cost: ${abs(cost):.2f})" if cost is not None and cost < 0 else ""
             improvement = (
@@ -397,6 +414,13 @@ class AICoachService:
                 f"Eliminate '{tag_label}' from your trading this week. "
                 f"It cost ${abs(worst['total_cost']):.2f} over {worst['count']} occurrence(s). "
                 f"Before entering any trade, explicitly confirm you are not making this mistake."
+            )
+        elif planned_worse:
+            diff = (ctx.unplanned_avg_pnl or 0) - (ctx.planned_avg_pnl or 0)
+            improvement = (
+                f"Unplanned trades are outperforming planned ones by ${diff:.2f}/trade. "
+                f"Before your next planned trade, re-read the plan at entry time and confirm you are "
+                f"executing at the specified level — over-analysis or hesitation may be causing slippage from the plan."
             )
         elif ctx.deviated_count > 0 and ctx.followed_plan_rate is not None and ctx.followed_plan_rate < 80:
             improvement = (

@@ -1,155 +1,128 @@
-# CLAUDE.md - trading_record_analysis
+# CLAUDE.md
 
-> **Documentation Version**: 1.0
-> **Last Updated**: 2026-04-10
-> **Project**: trading_record_analysis
-> **Description**: Professional trading journal and account analytics system for discretionary traders — supporting per-trade journaling, account-level analytics, MT4/MT5 integration, and AI coaching.
-> **Features**: GitHub auto-backup, Task agents, technical debt prevention
-
-This file provides essential guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## CRITICAL RULES - READ FIRST
 
-> **RULE ADHERENCE SYSTEM ACTIVE**
-> **These rules override all other instructions and must ALWAYS be followed.**
-
 ### RULE ACKNOWLEDGMENT REQUIRED
-> **Before starting ANY task, Claude Code must respond with:**
+Before starting ANY task, respond with:
 > "CRITICAL RULES ACKNOWLEDGED - I will follow all prohibitions and requirements listed in CLAUDE.md"
 
 ### ABSOLUTE PROHIBITIONS
-- **NEVER** create new files in root directory → use proper module structure
-- **NEVER** write output files directly to root directory → use `output/`
-- **NEVER** create documentation files (.md) unless explicitly requested by user
-- **NEVER** use git commands with -i flag (interactive mode not supported)
-- **NEVER** use `find`, `grep`, `cat`, `head`, `tail`, `ls` commands → use Read, Grep, Glob tools instead
-- **NEVER** create duplicate files (manager_v2.py, enhanced_xyz.py, utils_new.py) → ALWAYS extend existing files
-- **NEVER** create multiple implementations of same concept → single source of truth
-- **NEVER** copy-paste code blocks → extract into shared utilities/functions
-- **NEVER** hardcode values that should be configurable → use config files or environment variables
-- **NEVER** use naming like enhanced_, improved_, new_, v2_ → extend original files instead
+- **NEVER** create new files in the root directory — use proper module structure
+- **NEVER** write output files to the root directory — use `output/`
+- **NEVER** create documentation files (.md) unless explicitly requested
+- **NEVER** use `find`, `grep`, `cat`, `head`, `tail`, `ls` bash commands — use Read, Grep, Glob tools
+- **NEVER** use git with the `-i` flag (interactive mode not supported)
+- **NEVER** create duplicate or versioned files (`manager_v2.py`, `enhanced_xyz.py`, `utils_new.py`) — extend existing files
+- **NEVER** use naming like `enhanced_`, `improved_`, `new_`, `v2_`
 
 ### MANDATORY REQUIREMENTS
-- **COMMIT** after every completed task/phase - no exceptions
-- **GITHUB BACKUP** - Push to GitHub after every commit: `git push origin main`
-- **USE TASK AGENTS** for all long-running operations (>30 seconds)
-- **READ FILES FIRST** before editing - Edit/Write tools will fail if you didn't read the file first
-- **DEBT PREVENTION** - Before creating new files, check for existing similar functionality to extend
-- **SINGLE SOURCE OF TRUTH** - One authoritative implementation per feature/concept
+- **COMMIT** after every completed task/phase
+- **PUSH** to GitHub after every commit: `git push origin main`
+- **SEARCH FIRST** before creating anything — Grep for existing implementations
+- **READ FILES FIRST** before editing (Edit/Write tools require a prior Read)
 
-### EXECUTION PATTERNS
-- **PARALLEL TASK AGENTS** - Launch multiple Task agents simultaneously for maximum efficiency
-- **SYSTEMATIC WORKFLOW** - Plan → Parallel agents → Git checkpoints → GitHub backup → Test validation
-- **GITHUB BACKUP WORKFLOW** - After every commit: `git push origin main`
+---
 
-### MANDATORY PRE-TASK COMPLIANCE CHECK
-> **STOP: Before starting any task, Claude Code must explicitly verify ALL points:**
-
-**Step 1: Rule Acknowledgment**
-- [ ] I acknowledge all critical rules in CLAUDE.md and will follow them
-
-**Step 2: Task Analysis**
-- [ ] Will this create files in root? → If YES, use proper module structure instead
-- [ ] Will this take >30 seconds? → If YES, use Task agents not Bash
-- [ ] Am I about to use grep/find/cat? → If YES, use proper tools instead
-
-**Step 3: Technical Debt Prevention (MANDATORY SEARCH FIRST)**
-- [ ] **SEARCH FIRST**: Use Grep to find existing implementations before creating anything
-- [ ] Does similar functionality already exist? → If YES, extend existing code
-- [ ] Am I creating a duplicate class/module? → If YES, consolidate instead
-- [ ] Will this create multiple sources of truth? → If YES, redesign approach
-
-**Step 4: Session Management**
-- [ ] Is this a long/complex task? → If YES, plan context checkpoints
-
-> **DO NOT PROCEED until all checkboxes are explicitly verified**
-
-## PROJECT OVERVIEW
-
-### Architecture
-
-```
-trading_record_analysis/
-├── CLAUDE.md
-├── README.md
-├── .gitignore
-├── src/
-│   ├── main/
-│   │   ├── python/
-│   │   │   ├── core/          # Core business logic (calculations, metrics)
-│   │   │   ├── utils/         # Shared utility functions
-│   │   │   ├── models/        # Data models / database schemas
-│   │   │   ├── services/      # Service layer (MT4/MT5, AI coaching, analytics)
-│   │   │   └── api/           # FastAPI endpoints
-│   │   └── resources/
-│   │       ├── config/        # Configuration files (YAML/JSON)
-│   │       └── assets/        # Static assets
-│   └── test/
-│       ├── unit/              # Unit tests
-│       └── integration/       # Integration tests
-├── docs/                      # Documentation
-├── output/                    # Generated reports and output files
-└── tools/                     # Dev tools and scripts
-```
-
-### Core Modules
-| Module | Location | Purpose |
-|--------|----------|---------|
-| Trade Journal | `src/main/python/models/` | Per-trade data models |
-| Account Analytics | `src/main/python/core/` | Metrics calculations |
-| MT4/MT5 Integration | `src/main/python/services/` | Import and sync |
-| AI Coaching | `src/main/python/services/` | AI-powered review |
-| API Layer | `src/main/python/api/` | FastAPI routes |
-
-### Tech Stack
-- **Backend**: Python / FastAPI
-- **Database**: PostgreSQL / Supabase
-- **Analytics**: pandas, numpy
-- **Charts**: Plotly
-- **MT4/MT5**: MetaTrader5 Python package / CSV import
-- **AI Layer**: Claude API / OpenAI API
-
-## GITHUB SETUP
-
-- **Remote**: https://github.com/pengfuchao/trading_record_analysis.git
-- **Branch**: main
-- **Auto-push**: After every commit run `git push origin main`
-
-## COMMON COMMANDS
+## Commands
 
 ```bash
-# Run FastAPI server
-cd src/main/python && uvicorn api.main:app --reload
+# Start backend (from repo root)
+cd src/main/python && uvicorn api.app:app --reload
+# API at http://localhost:8000  |  Docs at http://localhost:8000/docs
 
-# Run tests
+# Run all tests
 python -m pytest src/test/
+
+# Run a single test file
+python -m pytest src/test/unit/test_metrics_calculator.py -v
+
+# Run a single test by name
+python -m pytest src/test/unit/test_csv_parser.py::TestMTCSVParser::test_parse_win -v
+
+# Apply DB migrations
+alembic upgrade head
+
+# Start frontend
+cd frontend && npm run dev
+# App at http://localhost:3000
 
 # Push to GitHub
 git push origin main
-
-# Check git status
-git status
-```
-
-## TECHNICAL DEBT PREVENTION
-
-### WRONG APPROACH (Creates Technical Debt):
-```python
-# Creating new file without searching first
-# analytics_v2.py, new_metrics.py, enhanced_calculator.py
-```
-
-### CORRECT APPROACH (Prevents Technical Debt):
-```python
-# 1. SEARCH FIRST
-# Grep(pattern="metric.*calculation", glob="*.py")
-# 2. READ EXISTING FILES
-# Read(file_path="src/main/python/core/metrics.py")
-# 3. EXTEND EXISTING FUNCTIONALITY
-# Edit(file_path="src/main/python/core/metrics.py", ...)
 ```
 
 ---
 
-**Prevention is better than consolidation - build clean from the start.**
-**Focus on single source of truth and extending existing functionality.**
+## Architecture
+
+### Backend (`src/main/python/`)
+
+**Entry point:** `api/app.py` — `create_app()` builds the FastAPI app and registers all routers. The module-level `app = create_app()` is what uvicorn targets (`uvicorn api.app:app`).
+
+**Layer structure (strict top-down, no skipping):**
+```
+api/routes/     →  api/schemas/    →  services/   →  core/    →  models/
+(HTTP handlers)    (Pydantic I/O)    (DB + ext.)    (logic)    (dataclasses)
+```
+
+- **`models/`** — Pure Python dataclasses (`Trade`, `Account`, `TradePlan`, `DailyPlan`). No SQLAlchemy here. Enums live in `models/enums.py` (`TradeResult`, `Direction`, `AssetClass`, `Platform`, `ChallengePhase`).
+- **`models/db_models.py`** — SQLAlchemy ORM models. Completely separate from domain dataclasses. Conversions happen in `utils/db_converters.py` via `orm_to_trade()` / `trade_to_orm()`.
+- **`services/`** — Repository classes (one per entity: `TradeRepository`, `AccountRepository`, `TradePlanRepository`, etc.) that accept a `Session` in `__init__`. Also: `MT5SyncService`, `AICoachService`, `TelegramNotifier`. Services never commit — the caller (route) owns session lifecycle via `get_session()` context manager in `database.py`.
+- **`core/`** — Pure business logic, no DB: `AccountAnalytics`, `MetricsCalculator`, `MistakeAnalyzer`, `SetupAnalyzer`, `DerivedFieldCalculator`. All stateless static/class methods.
+- **`api/dependencies.py`** — FastAPI DI functions: `get_db()`, `get_account_repo()`, `get_trade_repo()`, `require_account()`. `get_db()` yields a session from `get_session()` context manager. `load_dotenv()` fires in `database.py` at import time — this means env vars are available for all subsequent imports.
+
+**Session pattern:**
+```python
+# In routes — caller commits via get_db():
+def my_route(db: Session = Depends(get_db)):
+    repo = TradeRepository(db)   # repo stores session, never commits
+    repo.save(trade)             # flush only; commit happens when route exits
+```
+
+**Singleton services** (instantiated once at module level, reused across requests):
+- `_coach = AICoachService()` in `api/routes/coaching.py`
+- `_analytics = AccountAnalytics()` in `api/routes/analytics.py`
+- `_notifier = TelegramNotifier()` in `services/telegram_notifier.py` (via `get_notifier()`)
+
+**All API routes are account-scoped:** `/api/v1/accounts/{account_id}/...`
+
+**`Account` model fields:** `account_id`, `broker`, `platform`, `prop_firm`, `challenge_phase`, `starting_balance`, `account_currency`, `created_at`. There is **no `name` field** — use `account_id` or `account.broker` as a display label.
+
+### Frontend (`frontend/`)
+
+Next.js App Router (`frontend/app/`). Components in `frontend/components/`. Shared utilities in `frontend/lib/` (`api.ts` for all backend calls, `utils.ts` for formatting). Uses SWR for data fetching with key pattern `"resource-{accountId}-{filters}"` for correct cache invalidation.
+
+### Config & Environment
+
+- `.env` at repo root (gitignored) — loaded by `load_dotenv()` in `database.py`
+- `.env.example` documents all required/optional vars: `DATABASE_URL`, `ANTHROPIC_API_KEY`, `CORS_ORIGINS`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_ENABLED`, `MT5_<ACCOUNT_ID_UPPER>_PASSWORD`
+- YAML config in `src/main/resources/config/` — loaded via `config_loader.py` with `@lru_cache`
+
+### Database
+
+- PostgreSQL. Migrations in `alembic/versions/`.
+- ORM ↔ domain conversion: `utils/db_converters.py` — always go through `orm_to_trade()` / `trade_to_orm()`, never access ORM fields directly in business logic.
+
+### MT5 Sync
+
+`services/mt5_sync_service.py` → `services/mt5_connector.py`. MT5 password never stored in DB — read from env var `MT5_<ACCOUNT_ID_UPPER_UNDERSCORED>_PASSWORD` at request time. Windows-only; degrades gracefully on Linux/Mac.
+
+### Telegram
+
+Phase 1 (notifications): `services/telegram_notifier.py` — `TelegramNotifier` singleton. Three notification methods: `notify_mt5_sync_result()`, `check_and_notify_ftmo()` (state-change dedup via in-memory `_last_ftmo_status` dict), `notify_coaching_generated()`. All fire-and-forget. Phase 2 (structured write-in): `api/routes/telegram.py` — webhook/command handler.
+
+### Testing
+
+- Unit tests: `src/test/unit/` — use in-memory fixtures, no DB
+- Integration tests: `src/test/integration/` — use SQLite in-memory via pytest fixtures
+- Factory helpers: `make_trade()`, `make_account()` in each test file
+- No mocking of DB — tests use real SQLite sessions
+
+---
+
+## GitHub Setup
+
+- **Remote:** https://github.com/pengfuchao/trading_record_analysis.git
+- **Branch:** `main`
+- After every commit: `git push origin main`
