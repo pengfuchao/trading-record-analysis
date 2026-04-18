@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
 import { api, TradePlan, Trade } from "@/lib/api";
@@ -163,8 +163,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function PlanDetailPage({ params }: { params: Promise<{ planId: string }> }) {
-  const { planId } = use(params);
+export default function PlanDetailPage({ params }: { params: { planId: string } }) {
+  const { planId } = params;
   const { accountId } = useAccount();
   const { mutate } = useSWRConfig();
 
