@@ -27,7 +27,6 @@ from typing import Optional, Set
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy.orm import Session
 
 from src.main.python.models.db_models import MT5SyncConfigModel
 from src.main.python.services.database import get_session
@@ -42,6 +41,34 @@ _running: Set[str] = set()
 _running_lock = threading.Lock()
 
 
+# ── Sync-lock helpers (shared by scheduled and manual syncs) ──────────────────
+#
+# The MT5 Python package uses process-level global state: mt5.initialize(),
+# mt5.login(), and mt5.shutdown() are not safe to call concurrently from two
+# threads for the same account.  Both scheduled and manual syncs must acquire
+# this lock before opening an MT5Connector context.
+
+def acquire_sync_lock(account_id: str) -> bool:
+    """
+    Try to mark account_id as in-progress.
+
+    Returns True if the lock was acquired (caller may proceed).
+    Returns False if a sync for this account is already running (caller must abort).
+    Thread-safe.
+    """
+    with _running_lock:
+        if account_id in _running:
+            return False
+        _running.add(account_id)
+        return True
+
+
+def release_sync_lock(account_id: str) -> None:
+    """Release the sync lock for account_id. Safe to call even if not held."""
+    with _running_lock:
+        _running.discard(account_id)
+
+
 def _poll_account(account_id: str, lookback_days: int = 7) -> None:
     """
     Background job target.  Opens its own DB session; commits independently of
@@ -51,11 +78,9 @@ def _poll_account(account_id: str, lookback_days: int = 7) -> None:
     - Skips if config no longer exists or is disabled.
     - Notifies Telegram only on error.
     """
-    with _running_lock:
-        if account_id in _running:
-            logger.debug("Scheduled poll skipped — account=%s already syncing", account_id)
-            return
-        _running.add(account_id)
+    if not acquire_sync_lock(account_id):
+        logger.debug("Scheduled poll skipped — account=%s already syncing", account_id)
+        return
 
     try:
         with get_session() as session:
@@ -108,8 +133,7 @@ def _poll_account(account_id: str, lookback_days: int = 7) -> None:
             "Scheduled poll crashed account=%s error=%s", account_id, exc, exc_info=True
         )
     finally:
-        with _running_lock:
-            _running.discard(account_id)
+        release_sync_lock(account_id)
 
 
 class MT5PollingScheduler:
@@ -192,6 +216,11 @@ class MT5PollingScheduler:
             logger.info(
                 "Registered MT5 poll job account=%s interval=%dm", account_id, interval_minutes
             )
+
+    def get_next_run_time(self, account_id: str) -> Optional[datetime]:
+        """Return the next scheduled fire time for account_id, or None if not scheduled."""
+        job = self._scheduler.get_job(f"mt5_poll_{account_id}")
+        return job.next_run_time if job is not None else None
 
     def _remove_job(self, account_id: str) -> None:
         job_id = f"mt5_poll_{account_id}"

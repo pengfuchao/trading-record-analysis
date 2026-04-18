@@ -33,7 +33,7 @@ from src.main.python.api.schemas.mt5_sync import (
 )
 from src.main.python.services.account_repository import AccountRepository
 from src.main.python.services.mt5_connector import MT5ConnectionConfig
-from src.main.python.services.mt5_scheduler import get_scheduler
+from src.main.python.services.mt5_scheduler import acquire_sync_lock, get_scheduler, release_sync_lock
 from src.main.python.services.mt5_sync_service import MT5SyncService, load_mt5_password
 
 router = APIRouter(tags=["MT5 Sync"])
@@ -147,13 +147,26 @@ def trigger_mt5_sync(
     from_date = body.from_date or (datetime.utcnow() - timedelta(days=30))
     to_date = body.to_date or datetime.utcnow()
 
-    result = svc.sync_account(
-        account_id=account_id,
-        config=conn_config,
-        from_date=from_date,
-        to_date=to_date,
-        triggered_by="manual",
-    )
+    # Acquire overlap guard — same lock used by background polling.
+    # MT5 Python package uses process-level global state; concurrent syncs for
+    # the same account would corrupt each other's connection lifecycle.
+    if not acquire_sync_lock(account_id):
+        raise HTTPException(
+            status_code=409,
+            detail=f"A sync for account '{account_id}' is already in progress. "
+                   "Wait for it to complete before triggering another.",
+        )
+
+    try:
+        result = svc.sync_account(
+            account_id=account_id,
+            config=conn_config,
+            from_date=from_date,
+            to_date=to_date,
+            triggered_by="manual",
+        )
+    finally:
+        release_sync_lock(account_id)
 
     try:
         get_notifier().notify_mt5_sync_result(account_id, result)
@@ -203,9 +216,7 @@ def get_sync_status(
     # Next scheduled fire time from APScheduler (None if job not registered)
     next_poll_at = None
     try:
-        job = get_scheduler()._scheduler.get_job(f"mt5_poll_{account_id}")
-        if job is not None:
-            next_poll_at = job.next_run_time
+        next_poll_at = get_scheduler().get_next_run_time(account_id)
     except Exception:
         pass
 
