@@ -168,20 +168,30 @@ class MT5SyncService:
                     duplicate_strategy="update_broker",
                 )
 
-                # Refresh open positions snapshot
-                open_pos = conn.fetch_open_positions()
-                self._refresh_open_positions(account_id, open_pos)
-                result.open_positions_count = len(open_pos)
+                # Trade counts are captured here so they are correct even if
+                # the open-positions fetch below fails.
+                result.trades_new = counts.new
+                result.trades_updated = counts.updated
+                result.trades_skipped = counts.skipped
+                result.status = "success"
 
-            result.trades_new = counts.new
-            result.trades_updated = counts.updated
-            result.trades_skipped = counts.skipped
-            result.status = "success"
+                logger.info(
+                    "MT5 sync complete run=%s account=%s new=%d updated=%d skipped=%d",
+                    run_id, account_id, counts.new, counts.updated, counts.skipped,
+                )
 
-            logger.info(
-                "MT5 sync complete run=%s account=%s new=%d updated=%d skipped=%d",
-                run_id, account_id, counts.new, counts.updated, counts.skipped,
-            )
+                # Refresh open positions snapshot — non-fatal: a failure here
+                # does not revert the closed-trade sync that already succeeded.
+                try:
+                    open_pos = conn.fetch_open_positions()
+                    self._refresh_open_positions(account_id, open_pos)
+                    result.open_positions_count = len(open_pos)
+                except Exception as pos_exc:
+                    logger.warning(
+                        "Open positions refresh failed run=%s account=%s — "
+                        "closed-trade sync is unaffected: %s",
+                        run_id, account_id, pos_exc,
+                    )
 
         except (MT5ConnectionError, Exception) as exc:
             result.error_message = str(exc)
