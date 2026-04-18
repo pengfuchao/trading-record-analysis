@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
 import { api, Trade, TradePlan } from "@/lib/api";
@@ -215,8 +215,8 @@ function editToPatch(state: EditState): Partial<Trade> {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function TradeDetailPage({ params }: { params: Promise<{ tradeId: string }> }) {
-  const { tradeId } = use(params);
+export default function TradeDetailPage({ params }: { params: { tradeId: string } }) {
+  const { tradeId } = params;
   const { accountId } = useAccount();
   const { mutate } = useSWRConfig();
 
