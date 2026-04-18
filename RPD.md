@@ -61,7 +61,7 @@ These are small improvements suitable for the current development phase:
 
 | Item | Priority | Notes |
 |---|---|---|
-| Trade log pagination | Medium | No pagination today; can be slow at 500+ trades. Implement cursor or page-based pagination on the backend. |
+| Trade log pagination | **DONE** | Server-side page/page_size (default 50, max 500). `TradeListResponse` with items/total/page/total_pages. Frontend Prev/Next controls; filter changes reset to page 1. Analytics/coaching routes use page_size=10_000 to remain unaffected. |
 | Per-symbol / per-session analytics tabs | Medium | Dashboard shows account-level only. Segmented analytics by symbol/session would improve coaching signal. |
 | Chart screenshot upload | Low | No image attachment today. Would require file storage (Supabase Storage / S3). |
 | Setup library auto-suggestions from import | Low | New setup names from CSV don't auto-populate the library; trader must add them manually. |
