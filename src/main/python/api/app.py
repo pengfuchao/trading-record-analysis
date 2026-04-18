@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +12,18 @@ from src.main.python.api.routes.daily_plans import plans_router, reviews_router
 from src.main.python.api.routes.mt5_sync import router as mt5_sync_router
 from src.main.python.api.routes.telegram import router as telegram_router
 from src.main.python.api.routes.trade_plans import router as trade_plans_router
+from src.main.python.services.mt5_scheduler import get_scheduler
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Start background scheduler on startup; stop it cleanly on shutdown."""
+    scheduler = get_scheduler()
+    scheduler.start()
+    try:
+        yield
+    finally:
+        scheduler.stop()
 
 
 def create_app() -> FastAPI:
@@ -17,6 +31,7 @@ def create_app() -> FastAPI:
         title="Trading Journal API",
         version="1.0.0",
         description="REST API for the trading journal and account analytics system.",
+        lifespan=_lifespan,
     )
 
     # CORS — configure CORS_ORIGINS env var for production (comma-separated)

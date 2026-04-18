@@ -120,5 +120,7 @@ class MT5SyncStatusResponse(BaseModel):
     account_id: str
     sync_configured: bool
     enabled: bool
-    last_sync_at: Optional[datetime]   # completed_at of the most recent successful run
+    polling_interval_minutes: Optional[int]
+    next_poll_at: Optional[datetime]    # next scheduled fire time (None if not scheduled)
+    last_sync_at: Optional[datetime]    # completed_at of the most recent successful run
     last_runs: List[MT5SyncRunSummary]

@@ -735,6 +735,8 @@ export interface MT5SyncStatus {
   account_id: string;
   sync_configured: boolean;
   enabled: boolean;
+  polling_interval_minutes?: number;
+  next_poll_at?: string;
   last_sync_at?: string;
   last_runs: MT5SyncRunSummary[];
 }

@@ -33,6 +33,7 @@ from src.main.python.api.schemas.mt5_sync import (
 )
 from src.main.python.services.account_repository import AccountRepository
 from src.main.python.services.mt5_connector import MT5ConnectionConfig
+from src.main.python.services.mt5_scheduler import get_scheduler
 from src.main.python.services.mt5_sync_service import MT5SyncService, load_mt5_password
 
 router = APIRouter(tags=["MT5 Sync"])
@@ -62,6 +63,11 @@ def upsert_mt5_config(
     require_account(account_id, account_repo)
     svc = MT5SyncService(db)
     obj = svc.save_config(account_id, body.model_dump())
+    # Reload the scheduler job so interval/enabled changes take effect immediately
+    try:
+        get_scheduler().reload_account(account_id)
+    except Exception:
+        pass  # scheduler failure must never block the config save response
     return MT5ConfigResponse.model_validate(obj)
 
 
@@ -194,10 +200,21 @@ def get_sync_status(
         None,
     )
 
+    # Next scheduled fire time from APScheduler (None if job not registered)
+    next_poll_at = None
+    try:
+        job = get_scheduler()._scheduler.get_job(f"mt5_poll_{account_id}")
+        if job is not None:
+            next_poll_at = job.next_run_time
+    except Exception:
+        pass
+
     return MT5SyncStatusResponse(
         account_id=account_id,
         sync_configured=cfg is not None,
         enabled=cfg.enabled if cfg else False,
+        polling_interval_minutes=cfg.polling_interval_minutes if cfg else None,
+        next_poll_at=next_poll_at,
         last_sync_at=last_sync_at,
         last_runs=[MT5SyncRunSummary.model_validate(r) for r in runs],
     )

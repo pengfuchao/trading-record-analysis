@@ -130,11 +130,29 @@ Each manual MT5 sync now also fetches currently open positions via `mt5.position
 - DEAL_ENTRY_INOUT (partial close/hedge reconstruction)
 - Richer real-time position monitoring or streaming
 
-#### Phase 2 — Scheduled Background Polling (DEFERRED)
+#### Phase B — Partial Close Reconstruction (IMPLEMENTED 2026-04-18)
 
-- APScheduler periodic background sync (closed trades + open positions)
-- `polling_interval_minutes` DB column already exists as placeholder — no migration needed
-- DEAL_ENTRY_INOUT (partial closes/hedges) handling
+`DEAL_ENTRY_INOUT` (partial close) deals are now included alongside `DEAL_ENTRY_OUT` deals:
+- PnL is the sum across all exit deals (correct for partials)
+- Exit price is the volume-weighted average across all exit deals
+- Exit time is the last exit deal's timestamp
+- `partial_close_count` field records how many INOUT deals were present
+
+#### Phase C — Background Polling (IMPLEMENTED 2026-04-18)
+
+APScheduler-based background sync runs automatically per account:
+
+- `apscheduler>=3.10` added to `requirements.txt`
+- `services/mt5_scheduler.py` — `MT5PollingScheduler` singleton; one `IntervalJob` per enabled account; overlap protection via in-memory `_running` set; Telegram notification on error only (no spam on success)
+- `api/app.py` — FastAPI lifespan context manager starts/stops scheduler at app boot/shutdown
+- Config route (`POST /mt5-config`) calls `scheduler.reload_account()` immediately after save — interval/enabled changes take effect without restart
+- Status endpoint (`GET /mt5-sync/status`) now returns `polling_interval_minutes` and `next_poll_at` (next APScheduler fire time)
+- `triggered_by` column in `mt5_sync_runs` differentiates `"manual"` from `"scheduled"` runs — run history shows a Source badge per row
+- Frontend `/mt5-sync` page: polling interval + enabled checkbox added to config form; new "Background Polling" status panel shows active/disabled badge, interval, and next scheduled run time
+
+**No DB migration needed** — `polling_interval_minutes` and `enabled` columns existed since migration 006.
+
+**Deferred:**
 
 **Why MT5 first, not MT4:**
 - MT5 has a clean Python package with official support
@@ -279,10 +297,19 @@ Expansion Phase A (DONE 2026-04-18)
         - GET /accounts/{id}/open-positions endpoint
         - /mt5-sync open positions table (live floating PnL)
 
-Expansion Phase 2 (NEXT)
-  └── MT5 live sync Phase 2
-        - background scheduler (APScheduler)
-        - DEAL_ENTRY_INOUT (partial closes)
+Expansion Phase B (DONE 2026-04-18)
+  └── MT5 partial close reconstruction
+        - DEAL_ENTRY_INOUT included in out_deals aggregation
+        - volume-weighted exit price across partial exits
+        - partial_close_count field in reconstructed position
+
+Expansion Phase C (DONE 2026-04-18)
+  └── MT5 background polling
+        - apscheduler BackgroundScheduler, one job per enabled account
+        - overlap protection via in-memory _running set
+        - reload_account() called on config save (no restart needed)
+        - Telegram error-only notification for scheduled runs
+        - /mt5-sync page: polling controls + status panel + Source column in history
 
 Expansion Phase 2 (DONE 2026-04-17)
   └── Telegram notifications — Phase 1 (push-only)
@@ -329,7 +356,7 @@ Later
 
 | Constraint | Notes |
 |---|---|
-| MT5 live sync Phase A (open positions) implemented | Manual sync now also fetches `mt5.positions_get()` and persists to `mt5_open_positions`. View via `GET /api/v1/accounts/{id}/open-positions` or the `/mt5-sync` page. Background polling and partial-close handling are still deferred. |
+| MT5 live sync Phase C (background polling) implemented | APScheduler starts at app boot and schedules one IntervalJob per enabled account. Partial closes (INOUT) are aggregated into single trade records. No DB migration needed. |
 | No authentication | Single-user local deployment. Do not expose to public internet without adding auth. |
 | Coaching quality depends on trade data quality | Sparse trades or missing setup_type values reduce coaching signal. |
 | MT4 live sync path is fragile | EA-based bridges are platform-version-sensitive and hard to maintain. |

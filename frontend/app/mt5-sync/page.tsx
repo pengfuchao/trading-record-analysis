@@ -88,6 +88,8 @@ export default function MT5SyncPage() {
   const [server, setServer] = useState("");
   const [terminalPath, setTerminalPath] = useState("");
   const [utcOffset, setUtcOffset] = useState("2");
+  const [pollingInterval, setPollingInterval] = useState("60");
+  const [pollingEnabled, setPollingEnabled] = useState(true);
   const [configSaving, setConfigSaving] = useState(false);
   const [configSaved, setConfigSaved] = useState(false);
   const [configError2, setConfigError2] = useState<string | null>(null);
@@ -99,6 +101,8 @@ export default function MT5SyncPage() {
       setServer(config.mt5_server);
       setTerminalPath(config.terminal_path ?? "");
       setUtcOffset(String(config.broker_utc_offset));
+      setPollingInterval(String(config.polling_interval_minutes));
+      setPollingEnabled(config.enabled);
     }
   }, [config]);
 
@@ -122,6 +126,8 @@ export default function MT5SyncPage() {
         mt5_server: server.trim(),
         terminal_path: terminalPath.trim() || undefined,
         broker_utc_offset: parseInt(utcOffset, 10) || 2,
+        polling_interval_minutes: Math.max(1, parseInt(pollingInterval, 10) || 60),
+        enabled: pollingEnabled,
       };
       await api.saveMt5Config(accountId, body);
       await refreshConfig();
@@ -273,6 +279,41 @@ export default function MT5SyncPage() {
                 Leave blank to use the MT5 default install path.
               </p>
             </div>
+
+            {/* Polling interval */}
+            <div className="space-y-1">
+              <label className="text-xs text-gray-400">Auto-Poll Interval (minutes)</label>
+              <input
+                type="number"
+                value={pollingInterval}
+                onChange={(e) => setPollingInterval(e.target.value)}
+                min={1}
+                placeholder="60"
+                className="w-full bg-gray-800 border border-gray-700 text-gray-100 text-sm rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-600">
+                How often the background scheduler runs a sync. Minimum 1 minute.
+              </p>
+            </div>
+
+            {/* Polling enabled */}
+            <div className="space-y-1 flex flex-col justify-center">
+              <label className="text-xs text-gray-400">Background Polling</label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={pollingEnabled}
+                  onChange={(e) => setPollingEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded bg-gray-800 border-gray-600 text-blue-500 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-300">
+                  {pollingEnabled ? "Enabled" : "Disabled"}
+                </span>
+              </label>
+              <p className="text-xs text-gray-600">
+                Uncheck to pause auto-polling without deleting the config.
+              </p>
+            </div>
           </div>
         )}
 
@@ -315,6 +356,50 @@ export default function MT5SyncPage() {
           </button>
         )}
       </div>
+
+      {/* ── Section 1b: Background Polling Status ───────────────────────────── */}
+      {status?.sync_configured && (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Background Polling</p>
+            <span
+              className={`text-xs px-2 py-0.5 rounded font-medium border ${
+                status.enabled
+                  ? "bg-green-900/40 text-green-300 border-green-700/50"
+                  : "bg-gray-800 text-gray-400 border-gray-700"
+              }`}
+            >
+              {status.enabled ? "Active" : "Disabled"}
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-xs text-gray-500">Interval</p>
+              <p className="text-gray-200 mt-0.5">
+                {status.polling_interval_minutes != null
+                  ? `Every ${status.polling_interval_minutes} min`
+                  : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Next scheduled run</p>
+              <p className="text-gray-200 mt-0.5">
+                {status.next_poll_at
+                  ? fmtDateTime(status.next_poll_at)
+                  : status.enabled
+                  ? "Calculating…"
+                  : "—"}
+              </p>
+            </div>
+          </div>
+          {status.enabled && (
+            <p className="text-xs text-gray-600 mt-3">
+              Background sync runs automatically at the configured interval. Manual sync above always works
+              alongside polling — they share the same audit log below.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ── Section 2: Manual Sync Trigger ──────────────────────────────────── */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-4">
@@ -455,6 +540,7 @@ export default function MT5SyncPage() {
                 <tr className="text-gray-500 text-xs uppercase tracking-wider border-b border-gray-800">
                   <th className="text-left px-4 py-2">Started</th>
                   <th className="text-left px-4 py-2">Status</th>
+                  <th className="text-left px-4 py-2">Source</th>
                   <th className="text-left px-4 py-2">Range</th>
                   <th className="text-right px-4 py-2">New</th>
                   <th className="text-right px-4 py-2">Updated</th>
@@ -469,6 +555,15 @@ export default function MT5SyncPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <StatusBadge status={run.status} />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        run.triggered_by === "scheduled"
+                          ? "bg-purple-900/40 text-purple-300 border border-purple-700/50"
+                          : "bg-gray-800 text-gray-400 border border-gray-700"
+                      }`}>
+                        {run.triggered_by}
+                      </span>
                     </td>
                     <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">
                       {run.from_date && run.to_date
