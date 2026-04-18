@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
-import { api, TradePlan, Trade } from "@/lib/api";
+import { api, TradePlan, Trade, TradeListResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import { fmtDateTime, fmt } from "@/lib/utils";
 
@@ -174,11 +174,12 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
     () => api.getTradePlan(accountId, planId)
   );
 
-  // Trades for linking
-  const { data: trades = [] } = useSWR(
+  // Trades for linking — fetch all (up to 500) so client-side plan filtering works
+  const { data: tradesData } = useSWR<TradeListResponse>(
     accountId ? `trades-${accountId}--` : null,
-    () => api.listTrades(accountId)
+    () => api.listTrades(accountId!, { page: 1, page_size: 500 })
   );
+  const trades = tradesData?.items ?? [];
 
   const [editing, setEditing] = useState(false);
   const [editState, setEditState] = useState<EditState | null>(null);

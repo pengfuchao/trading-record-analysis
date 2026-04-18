@@ -40,12 +40,13 @@ def get_analytics(
     account_repo = get_account_repo(db)
     trade_repo = get_trade_repo(db)
     account = require_account(account_id, account_repo)
-    trades = trade_repo.get_by_account_filtered(
+    trades, _ = trade_repo.get_by_account_filtered(
         account_id,
         symbol=symbol,
         from_date=from_date,
         to_date=to_date,
         result=result,
+        page_size=10_000,
     )
     report = _analytics.generate_report(trades, account)
     return report_to_summary(report)
@@ -134,10 +135,11 @@ def get_plan_adherence(
     account_repo = get_account_repo(db)
     trade_repo = get_trade_repo(db)
     require_account(account_id, account_repo)
-    trades = trade_repo.get_by_account_filtered(
+    trades, _ = trade_repo.get_by_account_filtered(
         account_id,
         from_date=from_date,
         to_date=to_date,
+        page_size=10_000,
     )
     report = AccountAnalytics.compute_plan_adherence(trades)
     return plan_adherence_to_response(report)
@@ -155,12 +157,13 @@ def get_report(
     account_repo = get_account_repo(db)
     trade_repo = get_trade_repo(db)
     account = require_account(account_id, account_repo)
-    trades = trade_repo.get_by_account_filtered(
+    trades, _ = trade_repo.get_by_account_filtered(
         account_id,
         symbol=symbol,
         from_date=from_date,
         to_date=to_date,
         result=result,
+        page_size=10_000,
     )
     report = _analytics.generate_report(trades, account)
     return report_to_response(report)

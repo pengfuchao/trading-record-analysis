@@ -3,11 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { api } from "@/lib/api";
+import { api, TradeListResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import Badge from "@/components/Badge";
 import { fmtDateTime, fmtPnl, fmt, pnlColor } from "@/lib/utils";
+
+const PAGE_SIZE = 50;
 
 export default function TradesPage() {
   const { accountId } = useAccount();
@@ -15,16 +17,33 @@ export default function TradesPage() {
   const [result, setResult] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [page, setPage] = useState(1);
 
-  const { data: trades = [], isLoading } = useSWR(
-    accountId ? `trades-${accountId}-${symbol}-${result}-${fromDate}-${toDate}` : null,
-    () => api.listTrades(accountId, {
+  // Helpers that reset pagination when a filter changes
+  function setSymbolReset(v: string) { setSymbol(v); setPage(1); }
+  function setResultReset(v: string) { setResult(v); setPage(1); }
+  function setFromDateReset(v: string) { setFromDate(v); setPage(1); }
+  function setToDateReset(v: string) { setToDate(v); setPage(1); }
+
+  const swrKey = accountId
+    ? `trades-${accountId}-${symbol}-${result}-${fromDate}-${toDate}-p${page}`
+    : null;
+
+  const { data, isLoading } = useSWR<TradeListResponse>(
+    swrKey,
+    () => api.listTrades(accountId!, {
       symbol: symbol || undefined,
       result: result || undefined,
       from_date: fromDate || undefined,
       to_date: toDate || undefined,
+      page,
+      page_size: PAGE_SIZE,
     })
   );
+
+  const trades = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = data?.total_pages ?? 1;
 
   return (
     <div className="space-y-4">
@@ -38,12 +57,12 @@ export default function TradesPage() {
         <input
           placeholder="Symbol (e.g. XAUUSD)"
           value={symbol}
-          onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+          onChange={(e) => setSymbolReset(e.target.value.toUpperCase())}
           className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 w-44"
         />
         <select
           value={result}
-          onChange={(e) => setResult(e.target.value)}
+          onChange={(e) => setResultReset(e.target.value)}
           className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           <option value="">All results</option>
@@ -55,19 +74,19 @@ export default function TradesPage() {
         <input
           type="date"
           value={fromDate}
-          onChange={(e) => setFromDate(e.target.value)}
+          onChange={(e) => setFromDateReset(e.target.value)}
           className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
         <span className="text-xs text-gray-500">to</span>
         <input
           type="date"
           value={toDate}
-          onChange={(e) => setToDate(e.target.value)}
+          onChange={(e) => setToDateReset(e.target.value)}
           className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
         {(fromDate || toDate) && (
           <button
-            onClick={() => { setFromDate(""); setToDate(""); }}
+            onClick={() => { setFromDateReset(""); setToDateReset(""); }}
             className="text-xs text-gray-400 hover:text-gray-200 bg-gray-800 border border-gray-700 rounded px-2 py-1.5"
           >Clear dates</button>
         )}
@@ -126,6 +145,37 @@ export default function TradesPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Pagination controls */}
+      {total > 0 && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-500 text-xs">
+            {total} trade{total !== 1 ? "s" : ""} total
+            {totalPages > 1 && ` · page ${page} of ${totalPages}`}
+          </span>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="px-3 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded-md text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                ← Prev
+              </button>
+              <span className="text-xs text-gray-500 tabular-nums">
+                {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-3 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded-md text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next →
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

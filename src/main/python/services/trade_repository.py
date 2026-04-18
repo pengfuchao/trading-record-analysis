@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
@@ -187,27 +188,47 @@ class TradeRepository:
         from_date: Optional[datetime] = None,
         to_date: Optional[datetime] = None,
         result: Optional[str] = None,
-    ) -> List[Trade]:
+        page: int = 1,
+        page_size: int = 50,
+    ) -> Tuple[List[Trade], int]:
         """
-        Filtered query. All filters are additive (AND).
+        Filtered, paginated query. All filters are additive (AND).
         from_date / to_date filter on exit_datetime (inclusive).
         result should be the enum .value string: "Win", "Loss", or "Breakeven".
+
+        Returns (items, total) where total is the count matching all filters.
+        page is 1-based; page_size controls rows per page.
         """
-        stmt = (
-            select(TradeModel)
-            .where(TradeModel.account_id == account_id)
-        )
+        # Build the shared WHERE clause
+        where_clauses = [TradeModel.account_id == account_id]
         if symbol:
-            stmt = stmt.where(TradeModel.symbol == symbol)
+            where_clauses.append(TradeModel.symbol == symbol)
         if from_date:
-            stmt = stmt.where(TradeModel.exit_datetime >= from_date)
+            where_clauses.append(TradeModel.exit_datetime >= from_date)
         if to_date:
-            stmt = stmt.where(TradeModel.exit_datetime <= to_date)
+            where_clauses.append(TradeModel.exit_datetime <= to_date)
         if result:
-            stmt = stmt.where(TradeModel.result == result)
-        stmt = stmt.order_by(TradeModel.exit_datetime.asc())
-        rows = self._session.execute(stmt).scalars().all()
-        return [orm_to_trade(r) for r in rows]
+            where_clauses.append(TradeModel.result == result)
+
+        # Count query — same filters, no LIMIT/OFFSET
+        count_stmt = (
+            select(func.count())
+            .select_from(TradeModel)
+            .where(*where_clauses)
+        )
+        total: int = self._session.execute(count_stmt).scalar_one()
+
+        # Paginated data query
+        offset = (max(1, page) - 1) * page_size
+        data_stmt = (
+            select(TradeModel)
+            .where(*where_clauses)
+            .order_by(TradeModel.exit_datetime.asc())
+            .limit(page_size)
+            .offset(offset)
+        )
+        rows = self._session.execute(data_stmt).scalars().all()
+        return [orm_to_trade(r) for r in rows], total
 
     def delete(self, trade_id: str) -> bool:
         """Returns True if a row was deleted, False if trade_id not found."""

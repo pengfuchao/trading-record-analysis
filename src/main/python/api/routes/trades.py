@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from src.main.python.api.dependencies import get_db, get_account_repo, get_trade_repo, require_account
-from src.main.python.api.schemas.trade import TradeCreate, TradeResponse, TradeUpdate
+from src.main.python.api.schemas.trade import TradeCreate, TradeListResponse, TradeResponse, TradeUpdate
 from src.main.python.models.trade import Trade
 from src.main.python.services.account_repository import AccountRepository
 from src.main.python.services.derived_field_calculator import DerivedFieldCalculator
@@ -25,26 +26,37 @@ def _require_trade(trade_id: str, account_id: str, repo: TradeRepository) -> Tra
     return trade
 
 
-@router.get("/{account_id}/trades", response_model=List[TradeResponse])
+@router.get("/{account_id}/trades", response_model=TradeListResponse)
 def list_trades(
     account_id: str,
     symbol: Optional[str] = None,
     from_date: Optional[datetime] = None,
     to_date: Optional[datetime] = None,
     result: Optional[str] = None,
+    page: int = Query(default=1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(default=50, ge=1, le=500, description="Rows per page (max 500)"),
     db: Session = Depends(get_db),
 ):
     account_repo = get_account_repo(db)
     trade_repo = get_trade_repo(db)
     require_account(account_id, account_repo)
-    trades = trade_repo.get_by_account_filtered(
+    items, total = trade_repo.get_by_account_filtered(
         account_id,
         symbol=symbol,
         from_date=from_date,
         to_date=to_date,
         result=result,
+        page=page,
+        page_size=page_size,
     )
-    return [TradeResponse.from_domain(t) for t in trades]
+    total_pages = max(1, math.ceil(total / page_size))
+    return TradeListResponse(
+        items=[TradeResponse.from_domain(t) for t in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 @router.post("/{account_id}/trades", response_model=TradeResponse, status_code=201)

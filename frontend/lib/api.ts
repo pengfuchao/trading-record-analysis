@@ -52,7 +52,9 @@ export const api = {
     if (params?.result) q.set("result", params.result);
     if (params?.from_date) q.set("from_date", params.from_date);
     if (params?.to_date) q.set("to_date", endOfDay(params.to_date)!);
-    return request<Trade[]>(`/accounts/${accountId}/trades?${q}`);
+    if (params?.page != null) q.set("page", String(params.page));
+    if (params?.page_size != null) q.set("page_size", String(params.page_size));
+    return request<TradeListResponse>(`/accounts/${accountId}/trades?${q}`);
   },
   getTrade: (accountId: string, tradeId: string) =>
     request<Trade>(`/accounts/${accountId}/trades/${tradeId}`),
@@ -248,6 +250,16 @@ export interface TradeFilters {
   result?: string;
   from_date?: string;
   to_date?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface TradeListResponse {
+  items: Trade[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 export interface DateRange {

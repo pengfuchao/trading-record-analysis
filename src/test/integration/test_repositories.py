@@ -249,9 +249,10 @@ class TestTradeRepository:
         trade_repo.save(make_trade("T003", symbol="EURUSD"))
         session.commit()
 
-        results = trade_repo.get_by_account_filtered("ACC001", symbol="EURUSD")
-        assert len(results) == 2
-        assert all(t.symbol == "EURUSD" for t in results)
+        items, total = trade_repo.get_by_account_filtered("ACC001", symbol="EURUSD")
+        assert total == 2
+        assert len(items) == 2
+        assert all(t.symbol == "EURUSD" for t in items)
 
     def test_get_by_account_filtered_date_range(self, trade_repo, session):
         trade_repo.save(make_trade("T001", exit_datetime=datetime(2024, 1, 5)))
@@ -259,13 +260,13 @@ class TestTradeRepository:
         trade_repo.save(make_trade("T003", exit_datetime=datetime(2024, 1, 25)))
         session.commit()
 
-        results = trade_repo.get_by_account_filtered(
+        items, total = trade_repo.get_by_account_filtered(
             "ACC001",
             from_date=datetime(2024, 1, 10),
             to_date=datetime(2024, 1, 20),
         )
-        assert len(results) == 1
-        assert results[0].trade_id == "T002"
+        assert total == 1
+        assert items[0].trade_id == "T002"
 
     def test_get_by_account_filtered_result(self, trade_repo, session):
         trade_repo.save(make_trade("T001", result=TradeResult.WIN))
@@ -273,9 +274,10 @@ class TestTradeRepository:
         trade_repo.save(make_trade("T003", result=TradeResult.WIN))
         session.commit()
 
-        results = trade_repo.get_by_account_filtered("ACC001", result="Win")
-        assert len(results) == 2
-        assert all(t.result == TradeResult.WIN for t in results)
+        items, total = trade_repo.get_by_account_filtered("ACC001", result="Win")
+        assert total == 2
+        assert len(items) == 2
+        assert all(t.result == TradeResult.WIN for t in items)
 
     def test_get_by_account_filtered_combined(self, trade_repo, session):
         trade_repo.save(make_trade(
@@ -292,11 +294,11 @@ class TestTradeRepository:
         ))
         session.commit()
 
-        results = trade_repo.get_by_account_filtered(
+        items, total = trade_repo.get_by_account_filtered(
             "ACC001", symbol="EURUSD", result="Win"
         )
-        assert len(results) == 1
-        assert results[0].trade_id == "T001"
+        assert total == 1
+        assert items[0].trade_id == "T001"
 
     def test_delete_existing(self, trade_repo, session):
         trade_repo.save(make_trade())

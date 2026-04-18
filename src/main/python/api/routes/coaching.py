@@ -56,10 +56,11 @@ def generate_weekly_review(
     coaching_repo = _get_coaching_repo(db)
     account = require_account(account_id, account_repo)
 
-    trades = trade_repo.get_by_account_filtered(
+    trades, _ = trade_repo.get_by_account_filtered(
         account_id,
         from_date=from_date,
         to_date=to_date,
+        page_size=10_000,
     )
     if not trades:
         raise HTTPException(

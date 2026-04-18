@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import List, Optional
 
@@ -7,6 +8,15 @@ from pydantic import BaseModel
 
 from src.main.python.models.enums import AssetClass, Direction, Platform, TradeResult
 from src.main.python.models.trade import Trade
+
+
+class TradeListResponse(BaseModel):
+    """Paginated response for GET /accounts/{id}/trades."""
+    items: List["TradeResponse"]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class TradeCreate(BaseModel):
