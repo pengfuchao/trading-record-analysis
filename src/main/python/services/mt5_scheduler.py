@@ -163,19 +163,48 @@ class MT5PollingScheduler:
 
     # ── Job management ─────────────────────────────────────────────────────────
 
-    def reload_account(self, account_id: str) -> None:
+    def reload_account(
+        self,
+        account_id: str,
+        enabled: Optional[bool] = None,
+        interval_minutes: Optional[int] = None,
+    ) -> None:
         """
-        Re-read the config for one account and update its job accordingly.
-        Call this from the upsert_mt5_config route after saving new settings.
-        """
-        with get_session() as session:
-            cfg = session.get(MT5SyncConfigModel, account_id)
+        Update the polling job for one account.
 
-        if cfg is None or not cfg.enabled:
+        When called from the config-save route, pass ``enabled`` and
+        ``interval_minutes`` directly from the request body — the route's DB
+        session has not committed yet, so a fresh DB read here would see the
+        pre-save state and either skip registering a brand-new job or apply the
+        wrong interval.
+
+        When called without those arguments (e.g. from tests or one-off tooling),
+        we fall back to reading the current committed state from the DB.
+        """
+        if enabled is None or interval_minutes is None:
+            # Fallback: read from DB (values must already be committed)
+            with get_session() as session:
+                cfg = session.get(MT5SyncConfigModel, account_id)
+            if cfg is None:
+                self._remove_job(account_id)
+                return
+            enabled = cfg.enabled
+            interval_minutes = cfg.polling_interval_minutes
+            logger.debug(
+                "reload_account read from DB account=%s enabled=%s interval=%dm",
+                account_id, enabled, interval_minutes,
+            )
+        else:
+            logger.debug(
+                "reload_account using caller-supplied values account=%s enabled=%s interval=%dm",
+                account_id, enabled, interval_minutes,
+            )
+
+        if not enabled:
             self._remove_job(account_id)
             return
 
-        self._upsert_job(account_id, cfg.polling_interval_minutes)
+        self._upsert_job(account_id, interval_minutes)
 
     def _load_all_accounts(self) -> None:
         """Scan DB for enabled configs and register one job each."""

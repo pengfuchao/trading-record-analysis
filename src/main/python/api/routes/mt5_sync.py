@@ -63,9 +63,14 @@ def upsert_mt5_config(
     require_account(account_id, account_repo)
     svc = MT5SyncService(db)
     obj = svc.save_config(account_id, body.model_dump())
-    # Reload the scheduler job so interval/enabled changes take effect immediately
+    # Pass enabled/interval directly: the route's session hasn't committed yet,
+    # so reload_account must not re-read from DB or it will see pre-save state.
     try:
-        get_scheduler().reload_account(account_id)
+        get_scheduler().reload_account(
+            account_id,
+            enabled=body.enabled,
+            interval_minutes=body.polling_interval_minutes,
+        )
     except Exception:
         pass  # scheduler failure must never block the config save response
     return MT5ConfigResponse.model_validate(obj)
