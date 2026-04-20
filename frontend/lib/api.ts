@@ -132,6 +132,12 @@ export const api = {
   // Setups
   listSetups: () => request<SetupDefinition[]>("/setups"),
   getSetup: (setupId: string) => request<SetupDefinition>(`/setups/${setupId}`),
+  createSetup: (body: Record<string, unknown>) =>
+    request<SetupDefinition>("/setups", { method: "POST", body: JSON.stringify(body) }),
+  updateSetup: (setupId: string, body: Partial<SetupDefinition>) =>
+    request<SetupDefinition>(`/setups/${setupId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteSetup: (setupId: string) =>
+    request<{ deleted: boolean }>(`/setups/${setupId}`, { method: "DELETE" }),
   getSetupReport: (accountId: string) =>
     request<SetupReportResponse>(`/accounts/${accountId}/setups`),
 

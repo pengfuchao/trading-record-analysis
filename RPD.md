@@ -35,7 +35,7 @@ A professional trading journal and account analytics platform for discretionary 
 | Daily Plans | Pre-market plan CRUD (bias, symbols, setups, rules) | Complete |
 | Daily Reviews | Post-market review CRUD (PnL, mistakes, emotional summary, reflection) | Complete |
 | Mistake Analysis | Mistake frequency/cost ranking on dashboard | Complete |
-| Setup Library | Setup definitions CRUD, setup type autocomplete on trade edit form | Complete |
+| Setup Library | Setup definitions CRUD (backend + frontend create/edit/delete), setup type autocomplete on trade edit form | Complete |
 | AI Coaching | Weekly review via Anthropic Claude API, rule-based fallback, review history | Complete |
 
 ### 2.2 Tech Stack
@@ -343,6 +343,15 @@ Expansion Phase 4 (DONE 2026-04-17)
         - coaching_signals[] pre-computed per-account
         - dashboard Plan vs Execution section
         - coaching context + AI prompt + fallback extended with adherence signals
+
+Expansion Phase 5 (DONE 2026-04-21)
+  └── Setup Library frontend CRUD
+        - /setups page: inline "New Setup" form (blue border panel)
+        - each setup card: Edit button (expands inline form) + Delete with inline confirmation
+        - SWR mutate("setups") invalidates list after create/edit/delete
+        - setup_id auto-generated as kebab slug from name (editable before save)
+        - existing setup stats/analytics display fully preserved
+        - Deferred: screenshot_examples (no image upload infrastructure in v1)
 
 Later
   └── MT4 EA bridge
