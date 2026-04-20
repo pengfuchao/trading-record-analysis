@@ -762,6 +762,18 @@ export interface PlanAdherenceGroup {
   profit_factor?: number;
 }
 
+export interface RRComparisonResponse {
+  sample_count: number;
+  avg_planned_rr?: number;
+  avg_actual_r?: number;
+  avg_r_shortfall?: number;
+  realization_pct?: number;
+  met_target_count: number;
+  missed_target_count: number;
+  pct_met_target?: number;
+  coaching_signals: string[];
+}
+
 export interface PlanAdherenceResponse {
   total_trades: number;
 
@@ -781,6 +793,9 @@ export interface PlanAdherenceResponse {
 
   // Intersection
   linked_but_deviated_count: number;
+
+  // Planned R:R vs realized R (null when < 1 qualifying trade)
+  rr_comparison?: RRComparisonResponse;
 
   // Pre-computed coaching signals
   coaching_signals: string[];

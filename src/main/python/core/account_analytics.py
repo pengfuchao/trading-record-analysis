@@ -6,6 +6,7 @@ from typing import Callable, Dict, List, Optional
 from src.main.python.core.metrics_calculator import MetricsCalculator
 from src.main.python.core.performance_summary import (
     AccountReport, PerformanceSummary, PlanAdherenceGroup, PlanAdherenceReport,
+    RRComparisonReport,
 )
 from src.main.python.models.account import Account
 from src.main.python.models.enums import TradeResult
@@ -402,6 +403,8 @@ class AccountAnalytics:
             linked_but_deviated_count=len(linked_but_deviated),
         )
 
+        rr = AccountAnalytics.compute_rr_analysis(trades)
+
         return PlanAdherenceReport(
             total_trades=len(trades),
             planned_count=len(planned_trades),
@@ -415,6 +418,107 @@ class AccountAnalytics:
             followed=followed_grp,
             deviated=deviated_grp,
             linked_but_deviated_count=len(linked_but_deviated),
+            rr_comparison=rr if rr.sample_count > 0 else None,
+            coaching_signals=signals,
+        )
+
+    # ── Planned R:R vs Realized R analytics ───────────────────────────────────────
+
+    @staticmethod
+    def compute_rr_analysis(trades: List[Trade]) -> RRComparisonReport:
+        """
+        Compare planned R:R (from linked TradePlan) against realized R multiple.
+
+        Requires Trade.planned_rr to be pre-populated from the linked plan before
+        calling (the analytics route does this via TradePlanRepository lookup).
+
+        Inclusion criteria:
+          - trade.trade_plan_id is not None  (has a linked plan)
+          - trade.planned_rr is not None and > 0  (plan has an R:R target)
+          - trade.actual_r_multiple is not None   (realized R was computed)
+
+        All negative-R trades are included — they are diagnostically important.
+        """
+        MIN_N = 3
+
+        qualifying = [
+            t for t in trades
+            if t.trade_plan_id is not None
+            and t.planned_rr is not None
+            and t.planned_rr > 0
+            and t.actual_r_multiple is not None
+        ]
+
+        n = len(qualifying)
+        if n == 0:
+            return RRComparisonReport(
+                sample_count=0,
+                avg_planned_rr=None,
+                avg_actual_r=None,
+                avg_r_shortfall=None,
+                realization_pct=None,
+                met_target_count=0,
+                missed_target_count=0,
+                pct_met_target=None,
+                coaching_signals=[],
+            )
+
+        avg_planned = round(sum(t.planned_rr for t in qualifying) / n, 2)
+        avg_actual = round(sum(t.actual_r_multiple for t in qualifying) / n, 2)
+        shortfall = round(avg_actual - avg_planned, 2)
+        realization_pct = round((avg_actual / avg_planned) * 100, 1) if avg_planned != 0 else None
+
+        met = [t for t in qualifying if t.actual_r_multiple >= t.planned_rr]
+        missed = [t for t in qualifying if t.actual_r_multiple < t.planned_rr]
+        pct_met = round(len(met) / n * 100, 1) if n > 0 else None
+
+        signals = []
+        if n >= MIN_N:
+            if realization_pct is not None and realization_pct < 50:
+                signals.append(
+                    f"On average you are realizing only {realization_pct:.0f}% of your planned R:R "
+                    f"({avg_actual:+.2f}R actual vs {avg_planned:.2f}R planned across {n} linked trades). "
+                    f"The most likely cause is premature exits — consider holding to your original TP level."
+                )
+            elif realization_pct is not None and realization_pct < 80:
+                signals.append(
+                    f"You are capturing {realization_pct:.0f}% of your planned R:R on average "
+                    f"({avg_actual:+.2f}R realized vs {avg_planned:.2f}R planned, n={n}). "
+                    f"There is execution leakage between plan and outcome — review where exits deviate from the plan."
+                )
+            elif realization_pct is not None and realization_pct >= 100:
+                signals.append(
+                    f"Your realized R ({avg_actual:+.2f}R) equals or exceeds your planned R:R "
+                    f"({avg_planned:.2f}R planned, n={n}). "
+                    f"Strong hold discipline — you are executing to or beyond your intended targets."
+                )
+            else:
+                if shortfall < 0:
+                    signals.append(
+                        f"Average R shortfall: {shortfall:.2f}R below planned target "
+                        f"({avg_actual:+.2f}R realized vs {avg_planned:.2f}R planned, n={n})."
+                    )
+
+            if pct_met is not None and pct_met < 40:
+                signals.append(
+                    f"Only {pct_met:.0f}% of linked trades ({len(met)}/{n}) reached their planned R:R target. "
+                    f"Review whether planned take-profits are set at realistic levels "
+                    f"or whether exits are being triggered by fear before targets are hit."
+                )
+            elif pct_met is not None and pct_met >= 60:
+                signals.append(
+                    f"{pct_met:.0f}% of linked trades ({len(met)}/{n}) met or exceeded their planned R:R. "
+                )
+
+        return RRComparisonReport(
+            sample_count=n,
+            avg_planned_rr=avg_planned,
+            avg_actual_r=avg_actual,
+            avg_r_shortfall=shortfall,
+            realization_pct=realization_pct,
+            met_target_count=len(met),
+            missed_target_count=len(missed),
+            pct_met_target=pct_met,
             coaching_signals=signals,
         )
 

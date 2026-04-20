@@ -83,6 +83,31 @@ class PlanAdherenceGroup:
 
 
 @dataclass
+class RRComparisonReport:
+    """
+    Planned R:R vs realized R analytics.
+
+    Inclusion criteria:
+      - Trade has a linked plan (trade_plan_id is not None)
+      - Linked plan has planned_rr set (float, > 0)
+      - Trade has actual_r_multiple set (float, any sign)
+
+    All negative-R trades are included — they are the most diagnostically important.
+    avg_r_shortfall < 0 means realized R is below the planned target on average.
+    realization_pct < 100 means planned targets are being under-delivered on average.
+    """
+    sample_count: int                       # trades meeting all inclusion criteria
+    avg_planned_rr: Optional[float]         # mean planned_rr across qualifying trades
+    avg_actual_r: Optional[float]           # mean actual_r_multiple across qualifying trades
+    avg_r_shortfall: Optional[float]        # avg_actual_r - avg_planned_rr (negative = fell short)
+    realization_pct: Optional[float]        # (avg_actual_r / avg_planned_rr) * 100; None if planned=0
+    met_target_count: int                   # trades where actual_r >= planned_rr
+    missed_target_count: int                # trades where actual_r < planned_rr
+    pct_met_target: Optional[float]         # met_target_count / sample_count * 100
+    coaching_signals: List[str] = field(default_factory=list)
+
+
+@dataclass
 class PlanAdherenceReport:
     """
     Plan-vs-execution analytics for one account over a date range.
@@ -117,6 +142,9 @@ class PlanAdherenceReport:
 
     # Intersection
     linked_but_deviated_count: int = 0
+
+    # Planned R:R vs realized R (None when insufficient qualifying trades)
+    rr_comparison: Optional[RRComparisonReport] = None
 
     # Pre-computed coaching signals (plain English sentences)
     coaching_signals: List[str] = field(default_factory=list)

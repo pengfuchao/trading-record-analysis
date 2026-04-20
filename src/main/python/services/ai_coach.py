@@ -9,7 +9,7 @@ from typing import List, Optional
 
 from src.main.python.core.account_analytics import AccountAnalytics
 from src.main.python.core.mistake_analyzer import MistakeAnalyzer
-from src.main.python.core.performance_summary import PlanAdherenceGroup
+from src.main.python.core.performance_summary import PlanAdherenceGroup, RRComparisonReport
 from src.main.python.models.account import Account
 from src.main.python.models.trade import Trade
 from src.main.python.utils.logging_utils import get_logger
@@ -52,6 +52,13 @@ class CoachingContext:
     deviated_total_pnl:   Optional[float] = None   # total PnL cost of deviations
     deviated_count:       int = 0                  # count of followed_plan=False trades
     linked_but_deviated_count: int = 0             # has plan AND followed_plan=False
+
+    # Planned R:R vs realized R (populated when >= 3 qualifying trades exist)
+    rr_sample_count:    int = 0
+    avg_planned_rr:     Optional[float] = None     # mean planned_rr across qualifying trades
+    avg_actual_r:       Optional[float] = None     # mean actual_r_multiple across qualifying trades
+    realization_pct:    Optional[float] = None     # (avg_actual_r / avg_planned_rr) * 100
+    pct_met_rr_target:  Optional[float] = None     # % of linked trades that reached planned_rr
 
 
 # ── Generation result ──────────────────────────────────────────────────────────
@@ -167,6 +174,8 @@ class AICoachService:
         def _pnl(g: PlanAdherenceGroup) -> Optional[float]:
             return g.avg_pnl if g.count >= MIN_N else None
 
+        rr = plan_report.rr_comparison
+
         return CoachingContext(
             from_date=from_date,
             to_date=to_date,
@@ -197,6 +206,11 @@ class AICoachService:
             ),
             deviated_count=plan_report.deviated_count,
             linked_but_deviated_count=plan_report.linked_but_deviated_count,
+            rr_sample_count=rr.sample_count if rr else 0,
+            avg_planned_rr=rr.avg_planned_rr if rr and rr.sample_count >= MIN_N else None,
+            avg_actual_r=rr.avg_actual_r if rr and rr.sample_count >= MIN_N else None,
+            realization_pct=rr.realization_pct if rr and rr.sample_count >= MIN_N else None,
+            pct_met_rr_target=rr.pct_met_target if rr and rr.sample_count >= MIN_N else None,
         )
 
     # ── AI path ────────────────────────────────────────────────────────────────
@@ -347,12 +361,43 @@ class AICoachService:
             and ctx.unplanned_avg_pnl > ctx.planned_avg_pnl
         )
 
+        # R:R realization diagnosis — checked before generic fallbacks
+        rr_below_50 = (
+            ctx.realization_pct is not None and ctx.realization_pct < 50
+            and ctx.rr_sample_count >= 3
+        )
+        rr_below_80 = (
+            ctx.realization_pct is not None and ctx.realization_pct < 80
+            and ctx.rr_sample_count >= 3
+        )
+        rr_above_100 = (
+            ctx.realization_pct is not None and ctx.realization_pct >= 100
+            and ctx.rr_sample_count >= 3
+        )
+
         if dominant_source and dominant_source in source_map:
             area = source_map[dominant_source]
             pct = round(ctx.source_counts[dominant_source] / sum(ctx.source_counts.values()) * 100)
             diagnosis = (
                 f"Your recorded problem_source data points to {area} as the primary issue "
                 f"({pct}% of reviewed trades). Focus here before addressing other areas."
+            )
+        elif rr_below_50:
+            diagnosis = (
+                f"Severe R:R leakage: you are realizing only {ctx.realization_pct:.0f}% of "
+                f"your planned R:R on average ({ctx.avg_actual_r:+.2f}R actual vs "
+                f"{ctx.avg_planned_rr:.2f}R planned). "
+                f"This level of shortfall is usually driven by premature exits — "
+                f"fear of giving back open profit before the planned target is reached. "
+                f"Your planning is sound; the gap is in execution at the exit."
+            )
+        elif rr_below_80:
+            diagnosis = (
+                f"Execution leakage on exits: you are capturing {ctx.realization_pct:.0f}% of "
+                f"your planned R:R ({ctx.avg_actual_r:+.2f}R realized vs "
+                f"{ctx.avg_planned_rr:.2f}R planned, n={ctx.rr_sample_count}). "
+                f"The most common cause is adjusting take-profits during the trade "
+                f"rather than holding to the pre-defined level."
             )
         elif ctx.deviated_avg_pnl is not None and ctx.followed_avg_pnl is not None and not followed_worse:
             diff = (ctx.followed_avg_pnl or 0) - (ctx.deviated_avg_pnl or 0)
@@ -406,6 +451,20 @@ class AICoachService:
                 f"from them{cost_str}. "
                 f"Before your next trade, re-read the plan and identify the specific rule you broke. "
                 f"Add that to your pre-trade checklist."
+            )
+        elif rr_below_80 and ctx.avg_planned_rr is not None:
+            improvement = (
+                f"Stop adjusting take-profits during the trade. "
+                f"Your planned R:R is {ctx.avg_planned_rr:.2f}R on average; you are only realizing "
+                f"{ctx.avg_actual_r:+.2f}R ({ctx.realization_pct:.0f}%). "
+                f"For the next 5 trades, set your TP at the planned level and do not move it until "
+                f"price either hits it or the position is stopped out."
+            )
+        elif rr_above_100 and ctx.avg_planned_rr is not None:
+            improvement = (
+                f"Strong R:R execution — you are delivering {ctx.realization_pct:.0f}% of planned "
+                f"R:R ({ctx.avg_actual_r:+.2f}R vs {ctx.avg_planned_rr:.2f}R planned). "
+                f"Keep recording planned_rr on every trade plan and continue holding to targets."
             )
         elif ctx.top_mistakes:
             worst = ctx.top_mistakes[0]
@@ -519,6 +578,25 @@ class AICoachService:
             )
         plan_block = "\n".join(plan_lines) if plan_lines else "  not recorded"
 
+        # ── Planned R:R vs realized R block ──────────────────────────────────
+        rr_lines = []
+        if ctx.rr_sample_count >= 3:
+            rr_lines.append(
+                f"  Qualifying trades (linked plan with planned_rr + actual_r): {ctx.rr_sample_count}"
+            )
+            if ctx.avg_planned_rr is not None and ctx.avg_actual_r is not None:
+                shortfall = round(ctx.avg_actual_r - ctx.avg_planned_rr, 2)
+                rr_lines.append(
+                    f"  Avg planned R:R: {ctx.avg_planned_rr:.2f}R | "
+                    f"Avg realized R: {ctx.avg_actual_r:+.2f}R | "
+                    f"Shortfall: {shortfall:+.2f}R"
+                )
+            if ctx.realization_pct is not None:
+                rr_lines.append(f"  R:R realization: {ctx.realization_pct:.0f}% of planned target")
+            if ctx.pct_met_rr_target is not None:
+                rr_lines.append(f"  Trades that met or exceeded planned R:R: {ctx.pct_met_rr_target:.0f}%")
+        rr_block = "\n".join(rr_lines) if rr_lines else "  not enough data (need >= 3 linked trades with planned_rr set)"
+
         return f"""You are a professional trading coach reviewing a trader's performance.
 Analyze the data below and provide a structured JSON coaching review.
 
@@ -534,6 +612,9 @@ EXECUTION QUALITY:
 
 PLAN ADHERENCE:
 {plan_block}
+
+PLANNED R:R vs REALIZED R:
+{rr_block}
 
 TOP MISTAKES (by total cost):
 {mistakes_block}

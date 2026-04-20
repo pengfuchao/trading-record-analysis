@@ -6,7 +6,7 @@ import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { api, Account, FtmoStatus, PlanAdherenceGroup, PlanAdherenceResponse } from "@/lib/api";
+import { api, Account, FtmoStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import StatCard from "@/components/StatCard";
@@ -441,6 +441,94 @@ function GroupStats({ g, label, color }: { g: PlanAdherenceGroup; label: string;
   );
 }
 
+// ── Planned R:R vs Realized R panel ──────────────────────────────────────────
+
+function RRComparisonPanel({ rr }: { rr: RRComparisonResponse }) {
+  const shortfallColor =
+    rr.avg_r_shortfall == null ? "text-gray-400"
+    : rr.avg_r_shortfall >= 0   ? "text-green-400"
+    : rr.avg_r_shortfall >= -0.5 ? "text-yellow-400"
+    : "text-red-400";
+
+  const realizationColor =
+    rr.realization_pct == null ? "text-gray-400"
+    : rr.realization_pct >= 90  ? "text-green-400"
+    : rr.realization_pct >= 60  ? "text-yellow-400"
+    : "text-red-400";
+
+  const fmt2 = (v: number | undefined, sign = false) =>
+    v == null ? "—" : sign ? `${v >= 0 ? "+" : ""}${v.toFixed(2)}R` : `${v.toFixed(2)}R`;
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500 uppercase tracking-wider">
+          Planned R:R vs Realized R
+        </p>
+        <span className="text-xs text-gray-600">{rr.sample_count} qualifying trade{rr.sample_count !== 1 ? "s" : ""}</span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Avg Planned R:R</p>
+          <p className="text-lg font-mono font-semibold text-blue-400">{fmt2(rr.avg_planned_rr)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Avg Realized R</p>
+          <p className={`text-lg font-mono font-semibold ${rr.avg_actual_r != null && rr.avg_actual_r >= 0 ? "text-green-400" : "text-red-400"}`}>
+            {fmt2(rr.avg_actual_r, true)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Avg Shortfall</p>
+          <p className={`text-lg font-mono font-semibold ${shortfallColor}`}>
+            {fmt2(rr.avg_r_shortfall, true)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 mb-1">R:R Realization</p>
+          <p className={`text-lg font-mono font-semibold ${realizationColor}`}>
+            {rr.realization_pct != null ? `${rr.realization_pct.toFixed(0)}%` : "—"}
+          </p>
+        </div>
+      </div>
+
+      {/* Target hit rate */}
+      <div className="border-t border-gray-800 pt-3">
+        <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+          <span>Met planned target ({rr.met_target_count} of {rr.sample_count})</span>
+          <span>{rr.pct_met_target != null ? `${rr.pct_met_target.toFixed(0)}%` : "—"}</span>
+        </div>
+        {rr.pct_met_target != null && (
+          <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${rr.pct_met_target >= 60 ? "bg-green-500" : rr.pct_met_target >= 40 ? "bg-yellow-500" : "bg-red-500"}`}
+              style={{ width: `${Math.min(100, rr.pct_met_target)}%` }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Coaching signals */}
+      {rr.coaching_signals.length > 0 && (
+        <div className="space-y-1 pt-1">
+          {rr.coaching_signals.map((s, i) => (
+            <p key={i} className="text-xs text-gray-300 leading-relaxed">
+              <span className="text-purple-400 mr-1.5">›</span>{s}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {rr.sample_count < 3 && (
+        <p className="text-xs text-gray-600 italic">
+          Need at least 3 trades with a linked plan + planned_rr + actual R for reliable comparison.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PlanAdherencePanel({ data }: { data: PlanAdherenceResponse }) {
   const showPlanLinkage  = data.planned_count >= 2 || data.unplanned_count >= 2;
   const showFollowedPlan = data.followed_count >= 2 || data.deviated_count >= 2;
@@ -789,7 +877,12 @@ export default function DashboardPage() {
       {planAdherence && planAdherence.total_trades > 0 && (
         <section>
           <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Plan vs Execution</h2>
-          <PlanAdherencePanel data={planAdherence} />
+          <div className="space-y-4">
+            <PlanAdherencePanel data={planAdherence} />
+            {planAdherence.rr_comparison && planAdherence.rr_comparison.sample_count > 0 && (
+              <RRComparisonPanel rr={planAdherence.rr_comparison} />
+            )}
+          </div>
         </section>
       )}
     </div>

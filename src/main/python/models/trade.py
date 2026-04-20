@@ -98,3 +98,6 @@ class Trade:
 
     # Plan linking
     trade_plan_id: Optional[str] = None
+
+    # Transient — populated from the linked TradePlan at analytics time (not stored in trade table)
+    planned_rr: Optional[float] = None

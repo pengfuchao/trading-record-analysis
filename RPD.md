@@ -228,25 +228,36 @@ Strict key:value command intake via Telegram webhook. No natural-language parsin
 
 ---
 
-### 4.4 Plan-vs-Execution Analytics (Priority 4) — IMPLEMENTED 2026-04-17
+### 4.4 Plan-vs-Execution Analytics (Priority 4) — IMPLEMENTED 2026-04-17 / Extended 2026-04-21
 
 **Purpose:** Close the loop between pre-trade planning and actual performance.
 
 **What is implemented:**
 
-- `GET /accounts/{id}/plan-adherence` — new endpoint returning two comparison dimensions:
+- `GET /accounts/{id}/plan-adherence` — endpoint extended with `rr_comparison` field:
   - **Dimension 1 (trade_plan_id):** planned vs unplanned trade performance (win rate, avg PnL, profit factor)
   - **Dimension 2 (followed_plan):** self-reported plan adherence vs deviations
   - **Intersection:** linked-but-deviated count (wrote a plan, then broke it)
-  - Pre-computed coaching signal sentences returned in `coaching_signals[]`
-- **Dashboard section** — "Plan vs Execution" panel shows both dimensions side by side with coaching signals
-- **Coaching integration** — `CoachingContext` now carries plan adherence differentials; AI prompt includes a `PLAN ADHERENCE` section; fallback diagnosis/improvement prioritize adherence signals when data is present
-- No schema changes required — uses existing `trade_plan_id` and `followed_plan` fields
+  - **Planned R:R vs Realized R (`rr_comparison`):** compares `TradePlan.planned_rr` against `Trade.actual_r_multiple` for all trades with a linked plan, a positive planned_rr, and a non-null actual_r_multiple
+  - Pre-computed coaching signal sentences in `coaching_signals[]` and `rr_comparison.coaching_signals[]`
+- **Dashboard "Plan vs Execution" section** — shows plan linkage/adherence panels + `RRComparisonPanel`:
+  - Avg Planned R:R / Avg Realized R / Avg Shortfall / R:R Realization %
+  - Target-hit progress bar (% of trades that met or exceeded planned R:R)
+  - R:R-specific coaching signals (purple badge)
+- **Coaching integration** — `CoachingContext` now carries R:R metrics; AI prompt includes a `PLANNED R:R vs REALIZED R` section; fallback diagnosis and improvement sections use R:R realization as a primary signal when < 80%
 
-**Deferred (next phase):**
-- Planned R:R vs actual R comparison (requires per-trade `planned_rr` → `actual_r_multiple` join)
-- Per-setup planned vs unplanned breakdown (small n problem until more data)
-- Weekly trend of plan adherence over time
+**Inclusion criteria for R:R comparison:**
+- Trade must have a linked plan (`trade_plan_id` is not None)
+- Linked plan must have `planned_rr > 0`
+- Trade must have `actual_r_multiple` set
+- Minimum 3 qualifying trades before coaching signals are generated
+- Negative-R trades are always included (diagnostically important)
+
+**Deferred (follow-up phases):**
+- Per-setup planned vs realized R breakdown (small n problem until more data)
+- Trend over time (R:R realization improving / worsening)
+- Target-hit vs stop-hit decomposition (requires entry quality tagging)
+- Entry quality vs exit quality decomposition
 - Daily plan `allowed_setups` vs actual setups taken
 
 ---

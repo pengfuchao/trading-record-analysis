@@ -20,6 +20,7 @@ from src.main.python.api.schemas.analytics import (
 from src.main.python.services.telegram_notifier import get_notifier
 from src.main.python.core.account_analytics import AccountAnalytics
 from src.main.python.services.account_repository import AccountRepository
+from src.main.python.services.trade_plan_repository import TradePlanRepository
 from src.main.python.services.trade_repository import TradeRepository
 
 router = APIRouter(prefix="/accounts", tags=["analytics"])
@@ -141,6 +142,22 @@ def get_plan_adherence(
         to_date=to_date,
         page_size=10_000,
     )
+
+    # Enrich trades with planned_rr from their linked plans so that
+    # compute_rr_analysis() inside compute_plan_adherence() can compare
+    # planned vs realized R without needing a DB join at the analytics layer.
+    plan_repo = TradePlanRepository(db)
+    linked_plan_ids = {t.trade_plan_id for t in trades if t.trade_plan_id is not None}
+    if linked_plan_ids:
+        plans_by_id = {
+            p.plan_id: p
+            for p in plan_repo.list_by_account(account_id)
+            if p.plan_id in linked_plan_ids
+        }
+        for trade in trades:
+            if trade.trade_plan_id and trade.trade_plan_id in plans_by_id:
+                trade.planned_rr = plans_by_id[trade.trade_plan_id].planned_rr
+
     report = AccountAnalytics.compute_plan_adherence(trades)
     return plan_adherence_to_response(report)
 

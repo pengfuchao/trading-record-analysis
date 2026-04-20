@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from src.main.python.api.dependencies import (
     get_account_repo, get_db, get_trade_repo, require_account,
 )
+from src.main.python.services.trade_plan_repository import TradePlanRepository
 from src.main.python.api.schemas.coaching import (
     CoachingReviewDetailResponse,
     CoachingReviewListItem,
@@ -67,6 +68,19 @@ def generate_weekly_review(
             status_code=422,
             detail="No closed trades found for the specified date range. Import trades first.",
         )
+
+    # Enrich trades with planned_rr so coaching can include R:R vs planned signals
+    plan_repo = TradePlanRepository(db)
+    linked_plan_ids = {t.trade_plan_id for t in trades if t.trade_plan_id is not None}
+    if linked_plan_ids:
+        plans_by_id = {
+            p.plan_id: p
+            for p in plan_repo.list_by_account(account_id)
+            if p.plan_id in linked_plan_ids
+        }
+        for trade in trades:
+            if trade.trade_plan_id and trade.trade_plan_id in plans_by_id:
+                trade.planned_rr = plans_by_id[trade.trade_plan_id].planned_rr
 
     # Generate (AI or fallback — never raises)
     result = _coach.generate(

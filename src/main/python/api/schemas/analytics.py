@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from src.main.python.core.performance_summary import (
     AccountReport, PerformanceSummary, PlanAdherenceGroup, PlanAdherenceReport,
+    RRComparisonReport,
 )
 
 
@@ -312,6 +313,33 @@ class FtmoCheckResponse(FtmoStatusResponse):
     prev_status: Optional[str]
 
 
+# ── Planned R:R vs Realized R ─────────────────────────────────────────────────
+
+class RRComparisonResponse(BaseModel):
+    """
+    Planned R:R (from linked TradePlan) vs realized R multiple (from Trade).
+
+    Only trades with a linked plan, a positive planned_rr, and a non-null
+    actual_r_multiple are included.  All signs of actual_r are kept.
+
+    realization_pct: (avg_actual_r / avg_planned_rr) * 100.
+      < 100 → under-delivering on plan targets on average.
+      >= 100 → meeting or exceeding planned targets on average.
+
+    avg_r_shortfall: avg_actual_r - avg_planned_rr.
+      Negative → falling short of planned R:R on average.
+    """
+    sample_count: int
+    avg_planned_rr: Optional[float]
+    avg_actual_r: Optional[float]
+    avg_r_shortfall: Optional[float]
+    realization_pct: Optional[float]
+    met_target_count: int
+    missed_target_count: int
+    pct_met_target: Optional[float]
+    coaching_signals: List[str]
+
+
 # ── Plan adherence analytics ──────────────────────────────────────────────────
 
 class PlanAdherenceGroupResponse(BaseModel):
@@ -351,6 +379,9 @@ class PlanAdherenceResponse(BaseModel):
     # Intersection
     linked_but_deviated_count: int
 
+    # Planned R:R vs realized R (None when <1 qualifying trade)
+    rr_comparison: Optional[RRComparisonResponse]
+
     # Pre-computed coaching signal sentences
     coaching_signals: List[str]
 
@@ -363,6 +394,20 @@ def _adherence_group_to_response(g: PlanAdherenceGroup) -> PlanAdherenceGroupRes
         avg_r=g.avg_r,
         total_pnl=g.total_pnl,
         profit_factor=g.profit_factor,
+    )
+
+
+def _rr_comparison_to_response(rr: RRComparisonReport) -> RRComparisonResponse:
+    return RRComparisonResponse(
+        sample_count=rr.sample_count,
+        avg_planned_rr=rr.avg_planned_rr,
+        avg_actual_r=rr.avg_actual_r,
+        avg_r_shortfall=rr.avg_r_shortfall,
+        realization_pct=rr.realization_pct,
+        met_target_count=rr.met_target_count,
+        missed_target_count=rr.missed_target_count,
+        pct_met_target=rr.pct_met_target,
+        coaching_signals=rr.coaching_signals,
     )
 
 
@@ -380,6 +425,9 @@ def plan_adherence_to_response(r: PlanAdherenceReport) -> PlanAdherenceResponse:
         followed=_adherence_group_to_response(r.followed),
         deviated=_adherence_group_to_response(r.deviated),
         linked_but_deviated_count=r.linked_but_deviated_count,
+        rr_comparison=(
+            _rr_comparison_to_response(r.rr_comparison) if r.rr_comparison is not None else None
+        ),
         coaching_signals=r.coaching_signals,
     )
 
