@@ -110,7 +110,7 @@ class MistakeAnalyzer:
             if getattr(trade, attr, None) is True:
                 tags.add(canonical)
 
-        if trade.followed_plan is False:
+        if trade.followed_plan is False and trade.trade_plan_id is not None:
             tags.add("plan_violation")
 
         for tag in (trade.mistake_tags or []):

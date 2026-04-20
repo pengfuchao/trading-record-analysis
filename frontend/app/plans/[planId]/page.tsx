@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
 import { api, TradePlan, Trade, TradeListResponse } from "@/lib/api";
@@ -167,6 +168,7 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
   const { planId } = params;
   const { accountId } = useAccount();
   const { mutate } = useSWRConfig();
+  const router = useRouter();
 
   const swrKey = accountId && planId ? `trade-plan-${planId}` : null;
   const { data: plan, isLoading } = useSWR(
@@ -186,6 +188,8 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Link trade state
   const [selectedTradeId, setSelectedTradeId] = useState("");
@@ -249,6 +253,19 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
     }
   }
 
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await api.deleteTradePlan(accountId, planId);
+      await mutate(`trade-plans-${accountId}`);
+      router.push("/plans");
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Delete failed");
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
+
   async function handleUnlink(tradeId: string) {
     try {
       await api.unlinkPlanFromTrade(accountId, planId, tradeId);
@@ -276,7 +293,7 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
         {plan.is_a_plus_setup && (
           <span className="text-xs bg-yellow-900/40 text-yellow-300 px-2 py-0.5 rounded">A+</span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           {!editing && (
             <button
               onClick={openEdit}
@@ -284,6 +301,33 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
             >
               Edit Plan
             </button>
+          )}
+          {!editing && !confirmDelete && (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-red-700 text-gray-300 hover:text-white rounded transition-colors"
+            >
+              Delete
+            </button>
+          )}
+          {confirmDelete && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-red-400">Delete this plan?</span>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-3 py-1.5 text-xs bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded"
+              >
+                {deleting ? "Deleting…" : "Confirm"}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+                className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
+              >
+                Cancel
+              </button>
+            </div>
           )}
         </div>
       </div>
