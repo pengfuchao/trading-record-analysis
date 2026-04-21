@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
-import { api, TradePlan } from "@/lib/api";
+import { api, TradePlan, SetupDefinition } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
+import { SetupTypeSelect } from "@/components/SetupTypeSelect";
 
 const STATUS_COLORS: Record<string, string> = {
   planned:   "bg-blue-900/40 text-blue-300",
@@ -111,6 +112,9 @@ export default function PlansPage() {
     () => api.listTradePlans(accountId)
   );
 
+  const { data: setups = [] } = useSWR<SetupDefinition[]>("setups", () => api.listSetups());
+  const setupNames = setups.map((s) => s.name);
+
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<CreateState>(EMPTY_CREATE);
   const [creating, setCreating] = useState(false);
@@ -192,7 +196,7 @@ export default function PlansPage() {
                 onChange={(v) => set("intended_direction", v)}
                 options={[{ value: "long", label: "Long" }, { value: "short", label: "Short" }]}
               />
-              <TextInput label="Setup Type" value={form.setup_type} onChange={(v) => set("setup_type", v)} placeholder="e.g. OB Retest" />
+              <SetupTypeSelect label="Setup Type" value={form.setup_type} onChange={(v) => set("setup_type", v)} setupNames={setupNames} />
               <TextInput label="Strategy" value={form.strategy} onChange={(v) => set("strategy", v)} placeholder="e.g. SMC" />
               <TextInput label="Bias" value={form.bias} onChange={(v) => set("bias", v)} placeholder="e.g. Bullish" />
             </div>

@@ -4,9 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
-import { api, TradePlan, Trade, TradeListResponse } from "@/lib/api";
+import { api, TradePlan, Trade, TradeListResponse, SetupDefinition } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import { fmtDateTime, fmt } from "@/lib/utils";
+import { SetupTypeSelect } from "@/components/SetupTypeSelect";
 
 // ── Simple read-only field ────────────────────────────────────────────────────
 
@@ -175,6 +176,9 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
     swrKey,
     () => api.getTradePlan(accountId, planId)
   );
+
+  const { data: setups = [] } = useSWR<SetupDefinition[]>("setups", () => api.listSetups());
+  const setupNames = setups.map((s) => s.name);
 
   // Trades for linking — fetch all (up to 500) so client-side plan filtering works
   const { data: tradesData } = useSWR<TradeListResponse>(
@@ -364,7 +368,7 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
               onChange={(v) => set("intended_direction", v)}
               options={[{ value: "long", label: "Long" }, { value: "short", label: "Short" }]}
             />
-            <TextInput label="Setup Type" value={editState.setup_type} onChange={(v) => set("setup_type", v)} />
+            <SetupTypeSelect label="Setup Type" value={editState.setup_type} onChange={(v) => set("setup_type", v)} setupNames={setupNames} />
             <TextInput label="Strategy" value={editState.strategy} onChange={(v) => set("strategy", v)} />
             <TextInput label="Bias" value={editState.bias} onChange={(v) => set("bias", v)} />
           </div>
