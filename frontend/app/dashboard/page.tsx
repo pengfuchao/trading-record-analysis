@@ -6,11 +6,11 @@ import {
   AreaChart, Area, LineChart, Line, ComposedChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { api, Account, FtmoStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse, RRTrendBucket, RRTrendReportResponse, SegmentRow, SegmentAnalyticsResponse } from "@/lib/api";
+import { api, Account, FtmoStatus, MT5SyncStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse, RRTrendBucket, RRTrendReportResponse, SegmentRow, SegmentAnalyticsResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import StatCard from "@/components/StatCard";
-import { fmt, fmtPnl, fmtPct } from "@/lib/utils";
+import { fmt, fmtPnl, fmtPct, fmtAgo } from "@/lib/utils";
 
 // ── Chart tooltip formatters ───────────────────────────────────────────────────
 
@@ -702,6 +702,67 @@ function RRTrendChart({ report }: { report: RRTrendReportResponse }) {
   );
 }
 
+// ── MT5 data freshness pill (dashboard compact version) ───────────────────────
+
+type FreshnessState = "fresh" | "stale" | "delayed" | "error" | "no_sync";
+
+function computeFreshnessState(status: MT5SyncStatus): {
+  state: FreshnessState;
+  label: string;
+  detail: string;
+  cls: string;
+} {
+  const now = Date.now();
+  const lastRun = status.last_runs[0];
+  const intervalMs = (status.polling_interval_minutes ?? 60) * 60_000;
+  const staleMs = Math.max(intervalMs * 1.5, 90 * 60_000);
+  const lastSyncMs = status.last_sync_at ? new Date(status.last_sync_at).getTime() : null;
+  const nextPollMs = status.next_poll_at ? new Date(status.next_poll_at).getTime() : null;
+
+  if (!status.sync_configured || !lastRun) {
+    return { state: "no_sync", label: "No sync", detail: "MT5 not configured", cls: "text-gray-500" };
+  }
+
+  const lastRunIsError = lastRun.status === "error";
+  const errorNewerThanSuccess = !lastSyncMs || new Date(lastRun.started_at).getTime() > lastSyncMs;
+  if (lastRunIsError && errorNewerThanSuccess) {
+    const err = (lastRun.error_message ?? "sync error").slice(0, 60);
+    return { state: "error", label: "Sync error", detail: err, cls: "text-red-400" };
+  }
+
+  if (!lastSyncMs) {
+    return { state: "no_sync", label: "No sync", detail: "no successful sync yet", cls: "text-gray-500" };
+  }
+
+  const ageMs = now - lastSyncMs;
+  const ago = fmtAgo(status.last_sync_at);
+  const src = status.last_runs.find((r) => r.status === "success")?.triggered_by ?? "";
+  const srcLabel = src ? ` · ${src}` : "";
+
+  if (status.enabled && nextPollMs !== null && nextPollMs < now - 2 * 60_000) {
+    return { state: "delayed", label: "Delayed", detail: `next poll overdue · last sync ${ago}`, cls: "text-orange-400" };
+  }
+
+  if (ageMs > staleMs) {
+    return { state: "stale", label: "Stale", detail: `last sync ${ago}${srcLabel}`, cls: "text-yellow-400" };
+  }
+
+  return { state: "fresh", label: "Fresh", detail: `updated ${ago}${srcLabel}`, cls: "text-green-400" };
+}
+
+function Mt5FreshnessPill({ mt5Status }: { mt5Status: MT5SyncStatus }) {
+  if (!mt5Status.sync_configured) return null;
+  const { label, detail, cls } = computeFreshnessState(mt5Status);
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+      <span className="text-gray-600">MT5 data:</span>
+      <span className={`font-medium ${cls}`}>{label}</span>
+      <span className="text-gray-600">·</span>
+      <span className="text-gray-500">{detail}</span>
+    </span>
+  );
+}
+
 // ── Segment analytics table ────────────────────────────────────────────────────
 
 function SegmentTable({ rows, label }: { rows: SegmentRow[]; label: string }) {
@@ -842,6 +903,16 @@ export default function DashboardPage() {
     })
   );
 
+  // MT5 freshness — only for accounts that have MT5 configured; 404 = no config
+  const { data: mt5Status } = useSWR<MT5SyncStatus | null>(
+    accountId ? `mt5-status-${accountId}` : null,
+    async () => {
+      try { return await api.getMt5Status(accountId, 3); }
+      catch (e: any) { if (e?.message?.startsWith("404")) return null; throw e; }
+    },
+    { refreshInterval: 60_000 }
+  );
+
   const hasEquity = analytics?.equity_curve && analytics.equity_curve.length > 1;
 
   return (
@@ -902,6 +973,7 @@ export default function DashboardPage() {
         {(fromDate || toDate) && (
           <span className="text-xs text-blue-400">filtered</span>
         )}
+        {mt5Status && <Mt5FreshnessPill mt5Status={mt5Status} />}
       </div>
 
       {!accountId && (

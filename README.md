@@ -41,6 +41,7 @@ A full-stack web app that gives you a structured way to:
 | MT5 live sync — open positions snapshot on each sync | Done |
 | MT5 live sync — partial close (INOUT) reconstruction | Done |
 | MT5 live sync — background polling (APScheduler, per-account interval) | Done |
+| MT5 data freshness UX — Fresh/Stale/Delayed/Error badge on /mt5-sync and dashboard | Done |
 | Telegram push notifications (MT5 sync, FTMO alerts, coaching generated) | Done |
 | Telegram structured write-in (`/plan`, `/journal`, `/status`, `/ping`) | Done |
 

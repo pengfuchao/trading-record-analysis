@@ -13,7 +13,7 @@ import {
 } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
-import { fmtDateTime, fmtDate } from "@/lib/utils";
+import { fmtDateTime, fmtDate, fmtAgo } from "@/lib/utils";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -30,6 +30,106 @@ function daysAgo(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d.toISOString().slice(0, 10);
+}
+
+// ── Freshness computation ─────────────────────────────────────────────────────
+
+type FreshnessState = "fresh" | "stale" | "delayed" | "error" | "no_sync";
+
+interface FreshnessInfo {
+  state: FreshnessState;
+  ageMinutes: number | null;
+  lastError: string | null;
+  source: string | null;
+}
+
+function computeFreshness(status: MT5SyncStatus): FreshnessInfo {
+  if (!status.sync_configured || status.last_runs.length === 0) {
+    return { state: "no_sync", ageMinutes: null, lastError: null, source: null };
+  }
+
+  const now = Date.now();
+  const lastRun = status.last_runs[0];
+  const intervalMs = (status.polling_interval_minutes ?? 60) * 60_000;
+  // Stale threshold: 1.5× polling interval, minimum 90 min
+  const staleMs = Math.max(intervalMs * 1.5, 90 * 60_000);
+
+  const lastSyncMs = status.last_sync_at ? new Date(status.last_sync_at).getTime() : null;
+  const nextPollMs = status.next_poll_at ? new Date(status.next_poll_at).getTime() : null;
+
+  // Latest run errored AND that error is more recent than the last success
+  const lastRunIsError = lastRun.status === "error";
+  const errorNewerThanSuccess =
+    lastSyncMs === null ||
+    new Date(lastRun.started_at).getTime() > lastSyncMs;
+  if (lastRunIsError && errorNewerThanSuccess) {
+    return {
+      state: "error",
+      ageMinutes: lastSyncMs ? Math.floor((now - lastSyncMs) / 60_000) : null,
+      lastError: lastRun.error_message ?? "Unknown error",
+      source: lastRun.triggered_by,
+    };
+  }
+
+  if (!lastSyncMs) {
+    return { state: "no_sync", ageMinutes: null, lastError: null, source: null };
+  }
+
+  const ageMs = now - lastSyncMs;
+  const ageMinutes = Math.floor(ageMs / 60_000);
+  const source =
+    status.last_runs.find((r) => r.status === "success")?.triggered_by ?? null;
+
+  // Delayed: polling enabled, next poll overdue by >2 min
+  if (status.enabled && nextPollMs !== null && nextPollMs < now - 2 * 60_000) {
+    return { state: "delayed", ageMinutes, lastError: null, source };
+  }
+
+  if (ageMs > staleMs) {
+    return { state: "stale", ageMinutes, lastError: null, source };
+  }
+
+  return { state: "fresh", ageMinutes, lastError: null, source };
+}
+
+function FreshnessBadge({ status }: { status: MT5SyncStatus }) {
+  const { state, ageMinutes, lastError, source } = computeFreshness(status);
+
+  const cfg: Record<FreshnessState, { cls: string; label: string }> = {
+    fresh:   { cls: "bg-green-900/40 text-green-300 border-green-700/50",   label: "Fresh" },
+    stale:   { cls: "bg-yellow-900/40 text-yellow-300 border-yellow-700/50", label: "Stale" },
+    delayed: { cls: "bg-orange-900/40 text-orange-300 border-orange-700/50", label: "Delayed" },
+    error:   { cls: "bg-red-900/40 text-red-300 border-red-700/50",          label: "Error" },
+    no_sync: { cls: "bg-gray-800 text-gray-400 border-gray-700",             label: "No sync" },
+  };
+
+  const { cls, label } = cfg[state];
+
+  let detail = "";
+  if (state === "fresh" || state === "stale") {
+    const ago = status.last_sync_at ? fmtAgo(status.last_sync_at) : "—";
+    const src = source ? ` · ${source}` : "";
+    detail = `updated ${ago}${src}`;
+  } else if (state === "delayed") {
+    const ago = status.last_sync_at ? fmtAgo(status.last_sync_at) : "—";
+    detail = `next poll overdue · last success ${ago}`;
+  } else if (state === "error") {
+    const truncated = lastError ? lastError.slice(0, 80) + (lastError.length > 80 ? "…" : "") : "unknown error";
+    detail = truncated;
+  } else if (state === "no_sync") {
+    detail = "no successful sync yet";
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className={`text-xs px-2 py-0.5 rounded font-medium border ${cls}`}>
+        {label}
+      </span>
+      {detail && (
+        <span className="text-xs text-gray-400">{detail}</span>
+      )}
+    </div>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -359,9 +459,9 @@ export default function MT5SyncPage() {
 
       {/* ── Section 1b: Background Polling Status ───────────────────────────── */}
       {status?.sync_configured && (
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500 uppercase tracking-wider">Background Polling</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Data Freshness</p>
             <span
               className={`text-xs px-2 py-0.5 rounded font-medium border ${
                 status.enabled
@@ -369,33 +469,47 @@ export default function MT5SyncPage() {
                   : "bg-gray-800 text-gray-400 border-gray-700"
               }`}
             >
-              {status.enabled ? "Active" : "Disabled"}
+              Polling {status.enabled ? "On" : "Off"}
             </span>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
+
+          <FreshnessBadge status={status} />
+
+          <div className="grid grid-cols-2 gap-4 text-sm pt-1">
             <div>
-              <p className="text-xs text-gray-500">Interval</p>
-              <p className="text-gray-200 mt-0.5">
-                {status.polling_interval_minutes != null
-                  ? `Every ${status.polling_interval_minutes} min`
+              <p className="text-xs text-gray-500">Last successful sync</p>
+              <p className="text-gray-200 mt-0.5 text-xs">
+                {status.last_sync_at
+                  ? `${fmtDateTime(status.last_sync_at)} (${fmtAgo(status.last_sync_at)})`
                   : "—"}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Next scheduled run</p>
-              <p className="text-gray-200 mt-0.5">
-                {status.next_poll_at
-                  ? fmtDateTime(status.next_poll_at)
-                  : status.enabled
-                  ? "Calculating…"
+              <p className="text-xs text-gray-500">
+                {status.enabled ? "Next scheduled run" : "Interval (paused)"}
+              </p>
+              <p className="text-gray-200 mt-0.5 text-xs">
+                {status.enabled
+                  ? status.next_poll_at
+                    ? fmtDateTime(status.next_poll_at)
+                    : "Calculating…"
+                  : status.polling_interval_minutes != null
+                  ? `Every ${status.polling_interval_minutes} min (disabled)`
                   : "—"}
               </p>
             </div>
           </div>
+
           {status.enabled && (
-            <p className="text-xs text-gray-600 mt-3">
-              Background sync runs automatically at the configured interval. Manual sync above always works
-              alongside polling — they share the same audit log below.
+            <p className="text-xs text-gray-600">
+              Background sync runs every {status.polling_interval_minutes ?? "?"} min. Manual syncs
+              share the same audit log below.
+            </p>
+          )}
+          {!status.enabled && status.last_sync_at && (
+            <p className="text-xs text-gray-600">
+              Polling is disabled. Data was last updated {fmtAgo(status.last_sync_at)}. Enable polling
+              above or run a manual sync to refresh.
             </p>
           )}
         </div>
@@ -594,6 +708,7 @@ export default function MT5SyncPage() {
           {openPositions && openPositions.count > 0 && (
             <span className="text-xs text-gray-500">
               {openPositions.count} position{openPositions.count !== 1 ? "s" : ""} — as of last sync
+              {status?.last_sync_at ? ` (${fmtAgo(status.last_sync_at)})` : ""}
             </span>
           )}
         </div>
