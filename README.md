@@ -27,6 +27,7 @@ A full-stack web app that gives you a structured way to:
 | Trade plans CRUD + manual link to executed trades | Done |
 | Plan-vs-execution analytics: planned/unplanned + followed/deviated comparison | Done |
 | Planned R:R vs realized R comparison, realization %, coaching signals | Done |
+| Per-setup planned R:R vs realized R breakdown (Setup Library page, coaching) | Done |
 | Dashboard: equity curve, drawdown chart, core analytics | Done |
 | FTMO / prop firm status panel with live limit monitoring | Done |
 | Daily pre-market plans: create / edit / delete | Done |
@@ -297,7 +298,6 @@ See `RPD.md` for the full product roadmap.
 
 | Priority | Area |
 |---|---|
-| Next | Per-setup planned vs realized R breakdown |
 | Next | R:R realization trend over time |
 | Next | Per-symbol / per-session analytics tabs on dashboard |
 | Later | Target-hit vs stop-hit decomposition |

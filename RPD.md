@@ -256,8 +256,10 @@ Strict key:value command intake via Telegram webhook. No natural-language parsin
 - Minimum 3 qualifying trades before coaching signals are generated
 - Negative-R trades are always included (diagnostically important)
 
+**Implemented (2026-04-21):**
+- Per-setup planned vs realized R breakdown — see Phase 6 below
+
 **Deferred (follow-up phases):**
-- Per-setup planned vs realized R breakdown (small n problem until more data — priority next)
 - R:R realization trend over time (improving / worsening)
 - Target-hit vs stop-hit decomposition (requires entry quality tagging)
 - Entry quality vs exit quality decomposition
@@ -370,6 +372,20 @@ Consolidation pass (DONE 2026-04-21)
         - RPD updated to v2.1 with all completed phases
         - Known limitations and risk notes updated
         - Manual regression checklist added to README
+
+Expansion Phase 6 (DONE 2026-04-21)
+  └── Per-setup planned R:R vs realized R breakdown
+        - SetupStats gains: rr_sample_count, rr_avg_planned_rr, rr_avg_actual_r,
+          rr_avg_shortfall, rr_realization_pct, rr_pct_met_target
+        - SetupReport gains: ranked_by_rr_realization (setups with rr_sample_count >= 1)
+        - SetupAnalyzer._compute_stats() computes R:R per setup using trades with
+          linked plan + planned_rr > 0 + actual_r_multiple (same inclusion as account-level)
+        - get_setup_report() route now enriches trades with planned_rr from linked plans
+        - Coaching context: worst_rr_setup / best_rr_setup added; fallback improvement
+          names the worst-leakage setup; AI prompt has PER-SETUP R:R EXECUTION block
+        - Frontend: R:R Real. % column inline in SetupCard header (color-coded)
+        - Frontend: SetupRRTable ranked table on Setup Library page (n, planned R,
+          realized R, shortfall, realization %, target hit %; signals at n >= 3)
 
 Later
   └── MT4 EA bridge
