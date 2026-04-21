@@ -633,7 +633,16 @@ export default function SetupsPage() {
 
       {/* R:R realization ranking (only when account selected and data available) */}
       {accountId && setupReport && (
-        <SetupRRTable report={setupReport} />
+        <>
+          <SetupRRTable report={setupReport} />
+          {setupReport.trades_with_setup > 0 && setupReport.ranked_by_rr_realization.length === 0 && (
+            <p className="text-xs text-gray-600 px-1">
+              R:R Realization table appears when trades have a linked plan with{" "}
+              <span className="font-mono">planned_rr &gt; 0</span> and{" "}
+              <span className="font-mono">actual_r_multiple</span> set.
+            </p>
+          )}
+        </>
       )}
 
       {/* Empty state */}
