@@ -8,6 +8,7 @@ from datetime import date
 from typing import List, Optional
 
 from src.main.python.core.account_analytics import AccountAnalytics
+from src.main.python.models.enums import TradeResult
 from src.main.python.core.mistake_analyzer import MistakeAnalyzer
 from src.main.python.core.performance_summary import ExitDecompositionReport, PlanAdherenceGroup, RRComparisonReport
 from src.main.python.core.setup_analyzer import SetupAnalyzer
@@ -278,9 +279,14 @@ class AICoachService:
         if exit_report.total_classified >= 3:
             exit_stop_hit_pct = exit_report.stop_hit.pct_of_total
             exit_unclear_pct = exit_report.unclear.pct_of_total
-            n_losses = exit_report.stop_hit.count + exit_report.manual_cut.count
-            if n_losses > 0 and exit_report.manual_cut.count > 0:
-                exit_manual_cut_pct = round(exit_report.manual_cut.count / n_losses * 100, 1)
+            # Denominator: all classified LOSS-result trades (includes unclear losses
+            # in the grey zone, not just stop_hit + manual_cut).
+            n_classified_losses = sum(
+                1 for t in trades
+                if t.actual_r_multiple is not None and t.result == TradeResult.LOSS
+            )
+            if n_classified_losses > 0 and exit_report.manual_cut.count > 0:
+                exit_manual_cut_pct = round(exit_report.manual_cut.count / n_classified_losses * 100, 1)
             tp_wins = exit_report.target_hit.count + exit_report.exit_before_target.count
             if tp_wins > 0:
                 exit_target_hit_pct = round(exit_report.target_hit.count / tp_wins * 100, 1)

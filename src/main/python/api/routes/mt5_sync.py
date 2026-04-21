@@ -212,11 +212,9 @@ def get_sync_status(
     cfg = svc.get_config(account_id)
     runs = svc.get_recent_runs(account_id, limit=limit)
 
-    # Surface the most-recent successful run's completion time prominently
-    last_sync_at = next(
-        (r.completed_at for r in runs if r.status == "success" and r.completed_at),
-        None,
-    )
+    # Query the most-recent successful sync time independently of the run-history
+    # limit — prevents last_sync_at being None when all N fetched runs are errors.
+    last_sync_at = svc.get_last_successful_sync_time(account_id)
 
     # Next scheduled fire time from APScheduler (None if job not registered)
     next_poll_at = None

@@ -108,6 +108,25 @@ class MT5SyncService:
         )
         return list(self._session.execute(stmt).scalars().all())
 
+    def get_last_successful_sync_time(self, account_id: str):
+        """
+        Return the completed_at of the most recent successful sync run, independent
+        of any run-history limit. Returns None if no successful run exists.
+        """
+        from datetime import datetime
+        stmt = (
+            select(MT5SyncRunModel.completed_at)
+            .where(
+                MT5SyncRunModel.account_id == account_id,
+                MT5SyncRunModel.status == "success",
+                MT5SyncRunModel.completed_at.isnot(None),
+            )
+            .order_by(MT5SyncRunModel.completed_at.desc())
+            .limit(1)
+        )
+        result = self._session.execute(stmt).scalar_one_or_none()
+        return result
+
     # ── Sync orchestration ─────────────────────────────────────────────────────
 
     def sync_account(

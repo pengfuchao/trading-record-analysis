@@ -777,8 +777,12 @@ function ExitDecompositionPanel({ data }: { data: ExitDecompositionResponse }) {
   if (data.total_classified === 0 && data.total_unclassified === 0) return null;
   return (
     <div className="space-y-3">
-      <div className="text-xs text-gray-500 mb-1">
-        {data.total_classified} classified · {data.total_unclassified} without R multiple
+      <div className="text-xs text-gray-500 mb-1 space-y-0.5">
+        <span>{data.total_classified} classified · {data.total_unclassified} without R multiple</span>
+        <p className="text-gray-600">
+          Conservative classification — grey-zone exits fall into Unclear.
+          Target detection requires a TP level or linked plan with R:R.
+        </p>
       </div>
       <table className="w-full text-xs">
         <thead>

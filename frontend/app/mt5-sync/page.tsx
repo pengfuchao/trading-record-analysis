@@ -504,6 +504,7 @@ export default function MT5SyncPage() {
             <p className="text-xs text-gray-600">
               Background sync runs every {status.polling_interval_minutes ?? "?"} min. Manual syncs
               share the same audit log below.
+              Fresh = within 1.5× interval (min 90 min). Stale = older. Delayed = next poll overdue.
             </p>
           )}
           {!status.enabled && status.last_sync_at && (
