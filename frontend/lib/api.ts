@@ -245,6 +245,15 @@ export const api = {
     const qs = q.toString();
     return request<PlanAdherenceResponse>(`/accounts/${accountId}/plan-adherence${qs ? `?${qs}` : ""}`);
   },
+
+  // Per-symbol / per-session segment analytics
+  getSegmentAnalytics: (accountId: string, params?: DateRange) => {
+    const q = new URLSearchParams();
+    if (params?.from_date) q.set("from_date", params.from_date);
+    if (params?.to_date) q.set("to_date", endOfDay(params.to_date)!);
+    const qs = q.toString();
+    return request<SegmentAnalyticsResponse>(`/accounts/${accountId}/segment-analytics${qs ? `?${qs}` : ""}`);
+  },
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -557,6 +566,26 @@ export interface RRTrendReportResponse {
   buckets: RRTrendBucket[];
   total_qualifying: number;
   trend_signal: string | null;  // "improving" | "worsening" | "stable" | null
+}
+
+export interface SegmentRow {
+  name: string;
+  count: number;
+  win_rate: number | null;
+  avg_pnl: number | null;
+  total_pnl: number;
+  profit_factor: number | null;
+  avg_r: number | null;
+  low_sample: boolean;  // count < 3
+}
+
+export interface SegmentAnalyticsResponse {
+  by_symbol: SegmentRow[];
+  by_session: SegmentRow[];
+  best_symbol: string | null;
+  worst_symbol: string | null;
+  best_session: string | null;
+  worst_session: string | null;
 }
 
 export interface DailyPlan {

@@ -70,6 +70,16 @@ class CoachingContext:
     # R:R realization trend (populated when >= 4 weekly buckets with data)
     rr_trend_signal: Optional[str] = None   # "improving" | "worsening" | "stable" | None
 
+    # Per-symbol / per-session edge signals (n >= 3 per slot)
+    best_symbol: Optional[str] = None
+    worst_symbol: Optional[str] = None
+    worst_symbol_total_pnl: Optional[float] = None
+    worst_symbol_win_rate_pct: Optional[float] = None
+    best_session: Optional[str] = None
+    worst_session: Optional[str] = None
+    worst_session_pf: Optional[float] = None
+    best_session_pf: Optional[float] = None
+
 
 # ── Generation result ──────────────────────────────────────────────────────────
 
@@ -212,6 +222,46 @@ class AICoachService:
                 best_rr_setup = None
                 best_rr_setup_pct = None
 
+        # Symbol/session edge signals
+        _MIN_SEG = 3
+        sym_rows = [
+            (name, s) for name, s in report.by_symbol.items()
+            if s.total_trades >= _MIN_SEG
+        ]
+        sess_rows = [
+            (name, s) for name, s in report.by_session.items()
+            if s.total_trades >= _MIN_SEG and name != "Unknown"
+        ]
+
+        best_symbol: Optional[str] = None
+        worst_symbol: Optional[str] = None
+        worst_symbol_total_pnl: Optional[float] = None
+        worst_symbol_win_rate_pct: Optional[float] = None
+        if len(sym_rows) >= 2:
+            best_sym = max(sym_rows, key=lambda x: x[1].total_net_profit)
+            worst_sym = min(sym_rows, key=lambda x: x[1].total_net_profit)
+            if best_sym[0] != worst_sym[0]:
+                best_symbol = best_sym[0]
+                worst_symbol = worst_sym[0]
+                worst_symbol_total_pnl = round(worst_sym[1].total_net_profit, 2)
+                worst_symbol_win_rate_pct = (
+                    round((worst_sym[1].win_rate or 0) * 100, 1)
+                    if worst_sym[1].win_rate is not None else None
+                )
+
+        best_session: Optional[str] = None
+        worst_session: Optional[str] = None
+        worst_session_pf: Optional[float] = None
+        best_session_pf: Optional[float] = None
+        if len(sess_rows) >= 2:
+            best_sess = max(sess_rows, key=lambda x: x[1].profit_factor or 0.0)
+            worst_sess = min(sess_rows, key=lambda x: x[1].profit_factor or 0.0)
+            if best_sess[0] != worst_sess[0]:
+                best_session = best_sess[0]
+                worst_session = worst_sess[0]
+                worst_session_pf = worst_sess[1].profit_factor
+                best_session_pf = best_sess[1].profit_factor
+
         return CoachingContext(
             from_date=from_date,
             to_date=to_date,
@@ -252,6 +302,14 @@ class AICoachService:
             best_rr_setup=best_rr_setup,
             best_rr_setup_realization_pct=best_rr_setup_pct,
             rr_trend_signal=trend.trend_signal,
+            best_symbol=best_symbol,
+            worst_symbol=worst_symbol,
+            worst_symbol_total_pnl=worst_symbol_total_pnl,
+            worst_symbol_win_rate_pct=worst_symbol_win_rate_pct,
+            best_session=best_session,
+            worst_session=worst_session,
+            worst_session_pf=worst_session_pf,
+            best_session_pf=best_session_pf,
         )
 
     # ── AI path ────────────────────────────────────────────────────────────────
@@ -476,6 +534,25 @@ class AICoachService:
                 "Review whether trade entries are based on high-probability analysis "
                 "or whether stops are being set too close relative to targets."
             )
+        elif ctx.worst_symbol and ctx.worst_symbol_total_pnl is not None and ctx.worst_symbol_total_pnl < 0:
+            wr_str = f" ({ctx.worst_symbol_win_rate_pct}% win rate)" if ctx.worst_symbol_win_rate_pct is not None else ""
+            diagnosis = (
+                f"{ctx.worst_symbol} is your weakest symbol this period, "
+                f"costing ${abs(ctx.worst_symbol_total_pnl):.2f} net{wr_str}. "
+                f"Consider whether your edge applies to this instrument or whether "
+                f"it is better skipped until you identify a clearer setup."
+            )
+        elif ctx.worst_session and ctx.worst_session_pf is not None and ctx.worst_session_pf < 1.0:
+            pf_str = f"{ctx.worst_session_pf:.2f}"
+            best_str = (
+                f" {ctx.best_session} is your strongest session (PF {ctx.best_session_pf:.2f})."
+                if ctx.best_session and ctx.best_session_pf is not None else ""
+            )
+            diagnosis = (
+                f"{ctx.worst_session} session is unprofitable this period (profit factor {pf_str}).{best_str} "
+                f"Review whether your setup criteria are genuinely valid during {ctx.worst_session} "
+                f"or whether session conditions do not suit your strategy."
+            )
         else:
             diagnosis = (
                 "No dominant problem source is recorded for this period. "
@@ -672,6 +749,27 @@ class AICoachService:
             )
         setup_rr_block = "\n".join(setup_rr_lines) if setup_rr_lines else "  not enough per-setup data"
 
+        # ── Symbol / session edge block ───────────────────────────────────────
+        sym_lines = []
+        if ctx.best_symbol:
+            sym_lines.append(f"  Best symbol by total PnL: {ctx.best_symbol}")
+        if ctx.worst_symbol:
+            wr_str = f", win rate {ctx.worst_symbol_win_rate_pct}%" if ctx.worst_symbol_win_rate_pct is not None else ""
+            pnl_str = f"${ctx.worst_symbol_total_pnl:+.2f}" if ctx.worst_symbol_total_pnl is not None else "?"
+            sym_lines.append(
+                f"  Weakest symbol: {ctx.worst_symbol} — total PnL {pnl_str}{wr_str}"
+            )
+        symbol_block = "\n".join(sym_lines) if sym_lines else "  not enough per-symbol data (need >= 3 trades per symbol)"
+
+        sess_lines = []
+        if ctx.best_session:
+            pf_str = f"{ctx.best_session_pf:.2f}" if ctx.best_session_pf is not None else "?"
+            sess_lines.append(f"  Best session: {ctx.best_session} — profit factor {pf_str}")
+        if ctx.worst_session:
+            pf_str = f"{ctx.worst_session_pf:.2f}" if ctx.worst_session_pf is not None else "?"
+            sess_lines.append(f"  Worst session: {ctx.worst_session} — profit factor {pf_str}")
+        session_block = "\n".join(sess_lines) if sess_lines else "  not enough per-session data (need >= 3 trades per session)"
+
         # ── R:R trend block ───────────────────────────────────────────────────
         if ctx.rr_trend_signal:
             rr_trend_block = f"  Trend direction (first-half vs second-half weekly buckets): {ctx.rr_trend_signal.upper()}"
@@ -702,6 +800,12 @@ PER-SETUP R:R EXECUTION:
 
 R:R REALIZATION TREND (weekly):
 {rr_trend_block}
+
+SYMBOL EDGE:
+{symbol_block}
+
+SESSION EDGE:
+{session_block}
 
 TOP MISTAKES (by total cost):
 {mistakes_block}

@@ -453,6 +453,36 @@ class RRTrendReportResponse(BaseModel):
     trend_signal: Optional[str]      # "improving" | "worsening" | "stable" | None
 
 
+# ── Per-symbol / per-session segment analytics ────────────────────────────────
+
+class SegmentRowResponse(BaseModel):
+    """
+    Compact performance summary for one symbol or session slice.
+    low_sample=True when count < 3 — treat callouts for these rows with caution.
+    """
+    name: str
+    count: int
+    win_rate: Optional[float]           # 0.0–1.0 including breakevens
+    avg_pnl: Optional[float]            # total_pnl / count
+    total_pnl: float
+    profit_factor: Optional[float]
+    avg_r: Optional[float]              # None if no actual_r_multiple data
+    low_sample: bool                    # count < 3
+
+
+class SegmentAnalyticsResponse(BaseModel):
+    """
+    Symbol and session segmentation — rows sorted by total_pnl descending.
+    Callout fields are None when no row has n >= 3 (or when all are tied).
+    """
+    by_symbol: List[SegmentRowResponse]
+    by_session: List[SegmentRowResponse]
+    best_symbol: Optional[str]          # highest total_pnl, n >= 3
+    worst_symbol: Optional[str]         # lowest total_pnl, n >= 3
+    best_session: Optional[str]         # highest profit_factor, n >= 3, != "Unknown"
+    worst_session: Optional[str]        # lowest profit_factor, n >= 3, != "Unknown"
+
+
 # ── Import history ─────────────────────────────────────────────────────────────
 
 class ImportHistoryEntry(BaseModel):

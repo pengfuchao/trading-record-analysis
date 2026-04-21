@@ -6,7 +6,7 @@ import {
   AreaChart, Area, LineChart, Line, ComposedChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { api, Account, FtmoStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse, RRTrendBucket, RRTrendReportResponse } from "@/lib/api";
+import { api, Account, FtmoStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse, RRTrendBucket, RRTrendReportResponse, SegmentRow, SegmentAnalyticsResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import StatCard from "@/components/StatCard";
@@ -702,6 +702,64 @@ function RRTrendChart({ report }: { report: RRTrendReportResponse }) {
   );
 }
 
+// ── Segment analytics table ────────────────────────────────────────────────────
+
+function SegmentTable({ rows, label }: { rows: SegmentRow[]; label: string }) {
+  if (rows.length === 0) return null;
+  const hasR = rows.some((r) => r.avg_r !== null);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-gray-500 border-b border-gray-800">
+            <th className="text-left py-1.5 pr-3 font-medium">{label}</th>
+            <th className="text-right py-1.5 px-2 font-medium">Trades</th>
+            <th className="text-right py-1.5 px-2 font-medium">Win %</th>
+            <th className="text-right py-1.5 px-2 font-medium">Avg PnL</th>
+            <th className="text-right py-1.5 px-2 font-medium">Total PnL</th>
+            <th className="text-right py-1.5 px-2 font-medium">PF</th>
+            {hasR && <th className="text-right py-1.5 px-2 font-medium">Avg R</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr
+              key={r.name}
+              className={`border-b border-gray-800/50 ${r.low_sample ? "opacity-50" : ""}`}
+            >
+              <td className="py-1.5 pr-3 text-gray-100">
+                {r.name}
+                {r.low_sample && <span className="ml-1 text-gray-600 text-[10px]">({r.count})</span>}
+              </td>
+              <td className="text-right px-2 text-gray-400">{r.count}</td>
+              <td className="text-right px-2 text-gray-300">
+                {r.win_rate != null ? `${(r.win_rate * 100).toFixed(0)}%` : "—"}
+              </td>
+              <td className={`text-right px-2 ${r.avg_pnl != null && r.avg_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {r.avg_pnl != null ? fmtPnl(r.avg_pnl) : "—"}
+              </td>
+              <td className={`text-right px-2 font-medium ${r.total_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {fmtPnl(r.total_pnl)}
+              </td>
+              <td className="text-right px-2 text-gray-300">
+                {r.profit_factor != null ? r.profit_factor.toFixed(2) : "—"}
+              </td>
+              {hasR && (
+                <td className="text-right px-2 text-gray-400">
+                  {r.avg_r != null ? r.avg_r.toFixed(2) : "—"}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.some((r) => r.low_sample) && (
+        <p className="text-[10px] text-gray-600 mt-1">Faded rows have fewer than 3 trades — treat callouts with caution.</p>
+      )}
+    </div>
+  );
+}
+
 // ── Date helpers ───────────────────────────────────────────────────────────────
 
 function todayISO() {
@@ -771,6 +829,14 @@ export default function DashboardPage() {
   const { data: rrTrend } = useSWR(
     accountId ? `rr-trend-${accountId}-${fromDate}-${toDate}` : null,
     () => api.getRRTrend(accountId, {
+      from_date: fromDate || undefined,
+      to_date: toDate || undefined,
+    })
+  );
+
+  const { data: segmentData } = useSWR(
+    accountId ? `segment-analytics-${accountId}-${fromDate}-${toDate}` : null,
+    () => api.getSegmentAnalytics(accountId, {
       from_date: fromDate || undefined,
       to_date: toDate || undefined,
     })
@@ -1003,6 +1069,54 @@ export default function DashboardPage() {
           <span className="font-mono">planned_rr &gt; 0</span> and{" "}
           <span className="font-mono">actual_r_multiple</span> set.
         </p>
+      )}
+
+      {/* ── Symbol & Session Analytics ──────────────────────────────────────── */}
+      {segmentData && (segmentData.by_symbol.length > 0 || segmentData.by_session.length > 0) && (
+        <section>
+          <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Symbol & Session Analytics</h2>
+
+          {/* Callout badges */}
+          {(segmentData.best_symbol || segmentData.worst_symbol || segmentData.best_session || segmentData.worst_session) && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {segmentData.best_symbol && (
+                <span className="text-xs bg-green-900/40 border border-green-700/50 text-green-300 rounded px-2 py-1">
+                  Best symbol: <strong>{segmentData.best_symbol}</strong>
+                </span>
+              )}
+              {segmentData.worst_symbol && (
+                <span className="text-xs bg-red-900/40 border border-red-700/50 text-red-300 rounded px-2 py-1">
+                  Worst symbol: <strong>{segmentData.worst_symbol}</strong>
+                </span>
+              )}
+              {segmentData.best_session && (
+                <span className="text-xs bg-blue-900/40 border border-blue-700/50 text-blue-300 rounded px-2 py-1">
+                  Best session: <strong>{segmentData.best_session}</strong>
+                </span>
+              )}
+              {segmentData.worst_session && (
+                <span className="text-xs bg-orange-900/40 border border-orange-700/50 text-orange-300 rounded px-2 py-1">
+                  Worst session: <strong>{segmentData.worst_session}</strong>
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {segmentData.by_symbol.length > 0 && (
+              <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+                <h3 className="text-xs uppercase tracking-wider text-gray-500 mb-3">By Symbol</h3>
+                <SegmentTable rows={segmentData.by_symbol} label="Symbol" />
+              </div>
+            )}
+            {segmentData.by_session.length > 0 && (
+              <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+                <h3 className="text-xs uppercase tracking-wider text-gray-500 mb-3">By Session</h3>
+                <SegmentTable rows={segmentData.by_session} label="Session" />
+              </div>
+            )}
+          </div>
+        </section>
       )}
     </div>
   );

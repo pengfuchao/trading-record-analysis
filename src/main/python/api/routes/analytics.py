@@ -15,6 +15,8 @@ from src.main.python.api.schemas.analytics import (
     PlanAdherenceResponse,
     RRTrendBucketResponse,
     RRTrendReportResponse,
+    SegmentAnalyticsResponse,
+    SegmentRowResponse,
     plan_adherence_to_response,
     report_to_response,
     report_to_summary,
@@ -216,6 +218,84 @@ def get_rr_trend(
         ],
         total_qualifying=report.total_qualifying,
         trend_signal=report.trend_signal,
+    )
+
+
+@router.get("/{account_id}/segment-analytics", response_model=SegmentAnalyticsResponse)
+def get_segment_analytics(
+    account_id: str,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Per-symbol and per-session performance breakdown.
+
+    Rows are sorted by total_pnl descending.  low_sample=True when count < 3.
+    Callouts (best/worst symbol/session) require n >= 3 per row and exclude
+    the "Unknown" session bucket.
+    """
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    account = require_account(account_id, account_repo)
+    trades, _ = trade_repo.get_by_account_filtered(
+        account_id,
+        from_date=from_date,
+        to_date=to_date,
+        page_size=10_000,
+    )
+    report = _analytics.generate_report(trades, account)
+
+    MIN_SIGNAL_N = 3
+
+    def _to_row(name: str, s) -> SegmentRowResponse:
+        avg_pnl = round(s.total_net_profit / s.total_trades, 2) if s.total_trades else None
+        return SegmentRowResponse(
+            name=name,
+            count=s.total_trades,
+            win_rate=s.win_rate,
+            avg_pnl=avg_pnl,
+            total_pnl=round(s.total_net_profit, 2),
+            profit_factor=s.profit_factor,
+            avg_r=s.avg_r_multiple,
+            low_sample=s.total_trades < MIN_SIGNAL_N,
+        )
+
+    by_symbol = sorted(
+        [_to_row(name, s) for name, s in report.by_symbol.items()],
+        key=lambda r: r.total_pnl, reverse=True,
+    )
+    by_session = sorted(
+        [_to_row(name, s) for name, s in report.by_session.items()],
+        key=lambda r: r.total_pnl, reverse=True,
+    )
+
+    qualified_symbols = [r for r in by_symbol if not r.low_sample]
+    qualified_sessions = [r for r in by_session if not r.low_sample and r.name != "Unknown"]
+
+    best_symbol = max(qualified_symbols, key=lambda r: r.total_pnl).name if qualified_symbols else None
+    worst_symbol = min(qualified_symbols, key=lambda r: r.total_pnl).name if qualified_symbols else None
+    best_session = (
+        max(qualified_sessions, key=lambda r: r.profit_factor or 0.0).name
+        if qualified_sessions else None
+    )
+    worst_session = (
+        min(qualified_sessions, key=lambda r: r.profit_factor or 0.0).name
+        if qualified_sessions else None
+    )
+
+    if best_symbol == worst_symbol:
+        best_symbol = worst_symbol = None
+    if best_session == worst_session:
+        best_session = worst_session = None
+
+    return SegmentAnalyticsResponse(
+        by_symbol=by_symbol,
+        by_session=by_session,
+        best_symbol=best_symbol,
+        worst_symbol=worst_symbol,
+        best_session=best_session,
+        worst_session=worst_session,
     )
 
 
