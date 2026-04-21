@@ -56,6 +56,11 @@ class SetupAnalyzer:
         ranked_by_drawdown = sorted(
             by_setup, key=lambda s: by_setup[s].max_drawdown or 0.0
         )
+        ranked_by_rr_realization = sorted(
+            [s for s in by_setup if by_setup[s].rr_sample_count >= 1],
+            key=lambda s: by_setup[s].rr_realization_pct or 0.0,
+            reverse=True,
+        )
 
         logger.info(
             "SetupAnalyzer: account=%s trades=%d with_setup=%d unique_setups=%d",
@@ -72,6 +77,7 @@ class SetupAnalyzer:
             ranked_by_avg_r=ranked_by_avg_r,
             ranked_by_total_profit=ranked_by_total_profit,
             ranked_by_drawdown=ranked_by_drawdown,
+            ranked_by_rr_realization=ranked_by_rr_realization,
         )
 
     @staticmethod
@@ -143,6 +149,34 @@ class SetupAnalyzer:
         # Common mistakes
         common_mistakes = SetupAnalyzer._extract_mistakes(trades)
 
+        # Planned R:R vs realized R for this setup
+        # Requires trade.planned_rr to be pre-populated by the calling route
+        # (same enrichment pattern as analytics.py get_plan_adherence).
+        rr_qualifying = [
+            t for t in trades
+            if t.trade_plan_id is not None
+            and t.planned_rr is not None
+            and t.planned_rr > 0
+            and t.actual_r_multiple is not None
+        ]
+        rr_n = len(rr_qualifying)
+        rr_avg_planned_rr: Optional[float] = None
+        rr_avg_actual_r: Optional[float] = None
+        rr_avg_shortfall: Optional[float] = None
+        rr_realization_pct: Optional[float] = None
+        rr_pct_met_target: Optional[float] = None
+
+        if rr_n >= 1:
+            rr_avg_planned_rr = round(sum(t.planned_rr for t in rr_qualifying) / rr_n, 2)
+            rr_avg_actual_r = round(sum(t.actual_r_multiple for t in rr_qualifying) / rr_n, 2)
+            rr_avg_shortfall = round(rr_avg_actual_r - rr_avg_planned_rr, 2)
+            rr_realization_pct = (
+                round((rr_avg_actual_r / rr_avg_planned_rr) * 100, 1)
+                if rr_avg_planned_rr != 0 else None
+            )
+            met = sum(1 for t in rr_qualifying if t.actual_r_multiple >= t.planned_rr)
+            rr_pct_met_target = round(met / rr_n * 100, 1)
+
         return SetupStats(
             setup_type=setup_type,
             trade_count=count,
@@ -170,6 +204,12 @@ class SetupAnalyzer:
             best_symbol=best_symbol,
             worst_symbol=worst_symbol,
             common_mistakes=common_mistakes,
+            rr_sample_count=rr_n,
+            rr_avg_planned_rr=rr_avg_planned_rr,
+            rr_avg_actual_r=rr_avg_actual_r,
+            rr_avg_shortfall=rr_avg_shortfall,
+            rr_realization_pct=rr_realization_pct,
+            rr_pct_met_target=rr_pct_met_target,
         )
 
     @staticmethod

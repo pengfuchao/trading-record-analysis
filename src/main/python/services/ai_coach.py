@@ -10,6 +10,7 @@ from typing import List, Optional
 from src.main.python.core.account_analytics import AccountAnalytics
 from src.main.python.core.mistake_analyzer import MistakeAnalyzer
 from src.main.python.core.performance_summary import PlanAdherenceGroup, RRComparisonReport
+from src.main.python.core.setup_analyzer import SetupAnalyzer
 from src.main.python.models.account import Account
 from src.main.python.models.trade import Trade
 from src.main.python.utils.logging_utils import get_logger
@@ -59,6 +60,12 @@ class CoachingContext:
     avg_actual_r:       Optional[float] = None     # mean actual_r_multiple across qualifying trades
     realization_pct:    Optional[float] = None     # (avg_actual_r / avg_planned_rr) * 100
     pct_met_rr_target:  Optional[float] = None     # % of linked trades that reached planned_rr
+
+    # Per-setup R:R breakdown (populated when >= 3 qualifying trades per setup)
+    worst_rr_setup:                 Optional[str]   = None  # setup with lowest realization_pct
+    worst_rr_setup_realization_pct: Optional[float] = None
+    best_rr_setup:                  Optional[str]   = None  # setup with highest realization_pct
+    best_rr_setup_realization_pct:  Optional[float] = None
 
 
 # ── Generation result ──────────────────────────────────────────────────────────
@@ -176,6 +183,29 @@ class AICoachService:
 
         rr = plan_report.rr_comparison
 
+        # Per-setup R:R breakdown — find best and worst setups by realization_pct
+        # Trades already have planned_rr pre-populated by the calling route.
+        setup_report = SetupAnalyzer().generate_report(trades, account.account_id)
+        rr_setups = {
+            k: v for k, v in setup_report.by_setup.items()
+            if v.rr_sample_count >= MIN_N and v.rr_realization_pct is not None
+        }
+        best_rr_setup: Optional[str] = None
+        best_rr_setup_pct: Optional[float] = None
+        worst_rr_setup: Optional[str] = None
+        worst_rr_setup_pct: Optional[float] = None
+        if rr_setups:
+            best_key = max(rr_setups, key=lambda k: rr_setups[k].rr_realization_pct or 0.0)
+            worst_key = min(rr_setups, key=lambda k: rr_setups[k].rr_realization_pct or 0.0)
+            best_rr_setup = best_key
+            best_rr_setup_pct = rr_setups[best_key].rr_realization_pct
+            worst_rr_setup = worst_key
+            worst_rr_setup_pct = rr_setups[worst_key].rr_realization_pct
+            # Only report best/worst when they are meaningfully different setups
+            if best_rr_setup == worst_rr_setup:
+                best_rr_setup = None
+                best_rr_setup_pct = None
+
         return CoachingContext(
             from_date=from_date,
             to_date=to_date,
@@ -211,6 +241,10 @@ class AICoachService:
             avg_actual_r=rr.avg_actual_r if rr and rr.sample_count >= MIN_N else None,
             realization_pct=rr.realization_pct if rr and rr.sample_count >= MIN_N else None,
             pct_met_rr_target=rr.pct_met_target if rr and rr.sample_count >= MIN_N else None,
+            worst_rr_setup=worst_rr_setup,
+            worst_rr_setup_realization_pct=worst_rr_setup_pct,
+            best_rr_setup=best_rr_setup,
+            best_rr_setup_realization_pct=best_rr_setup_pct,
         )
 
     # ── AI path ────────────────────────────────────────────────────────────────
@@ -453,10 +487,20 @@ class AICoachService:
                 f"Add that to your pre-trade checklist."
             )
         elif rr_below_80 and ctx.avg_planned_rr is not None:
+            setup_note = ""
+            if (
+                ctx.worst_rr_setup
+                and ctx.worst_rr_setup_realization_pct is not None
+                and ctx.worst_rr_setup_realization_pct < 60
+            ):
+                setup_note = (
+                    f" Your biggest R:R leakage is on '{ctx.worst_rr_setup}' "
+                    f"({ctx.worst_rr_setup_realization_pct:.0f}% realization) — start there."
+                )
             improvement = (
                 f"Stop adjusting take-profits during the trade. "
                 f"Your planned R:R is {ctx.avg_planned_rr:.2f}R on average; you are only realizing "
-                f"{ctx.avg_actual_r:+.2f}R ({ctx.realization_pct:.0f}%). "
+                f"{ctx.avg_actual_r:+.2f}R ({ctx.realization_pct:.0f}%).{setup_note} "
                 f"For the next 5 trades, set your TP at the planned level and do not move it until "
                 f"price either hits it or the position is stopped out."
             )
@@ -597,6 +641,20 @@ class AICoachService:
                 rr_lines.append(f"  Trades that met or exceeded planned R:R: {ctx.pct_met_rr_target:.0f}%")
         rr_block = "\n".join(rr_lines) if rr_lines else "  not enough data (need >= 3 linked trades with planned_rr set)"
 
+        # Per-setup R:R block
+        setup_rr_lines = []
+        if ctx.worst_rr_setup and ctx.worst_rr_setup_realization_pct is not None:
+            setup_rr_lines.append(
+                f"  Weakest R:R execution: {ctx.worst_rr_setup} "
+                f"— {ctx.worst_rr_setup_realization_pct:.0f}% realization"
+            )
+        if ctx.best_rr_setup and ctx.best_rr_setup_realization_pct is not None:
+            setup_rr_lines.append(
+                f"  Strongest R:R execution: {ctx.best_rr_setup} "
+                f"— {ctx.best_rr_setup_realization_pct:.0f}% realization"
+            )
+        setup_rr_block = "\n".join(setup_rr_lines) if setup_rr_lines else "  not enough per-setup data"
+
         return f"""You are a professional trading coach reviewing a trader's performance.
 Analyze the data below and provide a structured JSON coaching review.
 
@@ -615,6 +673,9 @@ PLAN ADHERENCE:
 
 PLANNED R:R vs REALIZED R:
 {rr_block}
+
+PER-SETUP R:R EXECUTION:
+{setup_rr_block}
 
 TOP MISTAKES (by total cost):
 {mistakes_block}

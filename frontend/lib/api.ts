@@ -512,6 +512,12 @@ export interface SetupStatsResponse {
   best_symbol?: string;
   worst_symbol?: string;
   common_mistakes: Record<string, number>;
+  rr_sample_count: number;
+  rr_avg_planned_rr?: number;
+  rr_avg_actual_r?: number;
+  rr_avg_shortfall?: number;
+  rr_realization_pct?: number;
+  rr_pct_met_target?: number;
 }
 
 export interface SetupReportResponse {
@@ -525,6 +531,7 @@ export interface SetupReportResponse {
   ranked_by_avg_r: string[];
   ranked_by_total_profit: string[];
   ranked_by_drawdown: string[];
+  ranked_by_rr_realization: string[];
 }
 
 export interface DailyPlan {

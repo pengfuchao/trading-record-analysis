@@ -113,6 +113,13 @@ class SetupStatsResponse(BaseModel):
     best_symbol: Optional[str]
     worst_symbol: Optional[str]
     common_mistakes: Dict[str, int]
+    # Planned R:R vs realized R (rr_sample_count=0 means no qualifying trades)
+    rr_sample_count: int = 0
+    rr_avg_planned_rr: Optional[float] = None
+    rr_avg_actual_r: Optional[float] = None
+    rr_avg_shortfall: Optional[float] = None
+    rr_realization_pct: Optional[float] = None
+    rr_pct_met_target: Optional[float] = None
 
 
 class SetupReportResponse(BaseModel):
@@ -126,6 +133,7 @@ class SetupReportResponse(BaseModel):
     ranked_by_avg_r: List[str]
     ranked_by_total_profit: List[str]
     ranked_by_drawdown: List[str]
+    ranked_by_rr_realization: List[str] = []
 
 
 def _stats_to_response(s: SetupStats) -> SetupStatsResponse:
@@ -156,6 +164,12 @@ def _stats_to_response(s: SetupStats) -> SetupStatsResponse:
         best_symbol=s.best_symbol,
         worst_symbol=s.worst_symbol,
         common_mistakes=s.common_mistakes,
+        rr_sample_count=s.rr_sample_count,
+        rr_avg_planned_rr=s.rr_avg_planned_rr,
+        rr_avg_actual_r=s.rr_avg_actual_r,
+        rr_avg_shortfall=s.rr_avg_shortfall,
+        rr_realization_pct=s.rr_realization_pct,
+        rr_pct_met_target=s.rr_pct_met_target,
     )
 
 
@@ -171,4 +185,5 @@ def setup_report_to_response(r: SetupReport) -> SetupReportResponse:
         ranked_by_avg_r=r.ranked_by_avg_r,
         ranked_by_total_profit=r.ranked_by_total_profit,
         ranked_by_drawdown=r.ranked_by_drawdown,
+        ranked_by_rr_realization=r.ranked_by_rr_realization,
     )

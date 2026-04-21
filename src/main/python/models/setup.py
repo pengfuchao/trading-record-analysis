@@ -72,6 +72,15 @@ class SetupStats:
     # Common mistakes on this setup (tag → count)
     common_mistakes: Dict[str, int] = field(default_factory=dict)
 
+    # Planned R:R vs realized R (only populated when trades have a linked plan +
+    # planned_rr > 0 + actual_r_multiple set; rr_sample_count=0 means no data)
+    rr_sample_count: int = 0
+    rr_avg_planned_rr: Optional[float] = None
+    rr_avg_actual_r: Optional[float] = None
+    rr_avg_shortfall: Optional[float] = None    # negative = fell short of plan
+    rr_realization_pct: Optional[float] = None  # (avg_actual / avg_planned) * 100
+    rr_pct_met_target: Optional[float] = None   # % trades where actual_r >= planned_rr
+
 
 @dataclass
 class SetupReport:
@@ -86,3 +95,4 @@ class SetupReport:
     ranked_by_avg_r: List[str] = field(default_factory=list)       # desc
     ranked_by_total_profit: List[str] = field(default_factory=list)  # desc
     ranked_by_drawdown: List[str] = field(default_factory=list)    # worst first (most negative)
+    ranked_by_rr_realization: List[str] = field(default_factory=list)  # desc, only setups with rr_sample_count >= 1

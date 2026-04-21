@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
-import { api, SetupDefinition, SetupStatsResponse } from "@/lib/api";
+import { api, SetupDefinition, SetupStatsResponse, SetupReportResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import { fmtPct, fmt, fmtPnl, pnlColor } from "@/lib/utils";
@@ -307,6 +307,88 @@ function DetailField({ label, value }: { label: string; value: string }) {
   );
 }
 
+// ── R:R realization ranking table ─────────────────────────────────────────────
+
+const MIN_RR_N = 1;   // show numbers with 1+ qualifying trades
+const SIGNAL_RR_N = 3; // only show coaching color-coding with 3+
+
+function rrColor(pct: number | undefined): string {
+  if (pct == null) return "text-gray-400";
+  if (pct >= 90) return "text-green-400";
+  if (pct >= 60) return "text-yellow-400";
+  return "text-red-400";
+}
+
+function SetupRRTable({ report }: { report: SetupReportResponse }) {
+  const ranked = report.ranked_by_rr_realization.filter(
+    (name) => (report.by_setup[name]?.rr_sample_count ?? 0) >= MIN_RR_N
+  );
+  if (ranked.length === 0) return null;
+
+  return (
+    <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+      <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">
+        R:R Realization by Setup
+      </h2>
+      <p className="text-xs text-gray-600 mb-4">
+        Planned R:R vs realized R for trades with a linked plan and <code className="text-gray-500">planned_rr</code> set.
+        Signals require ≥ {SIGNAL_RR_N} qualifying trades.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-gray-500 border-b border-gray-800">
+              <th className="text-left pb-2 pr-4 font-normal">Setup</th>
+              <th className="text-right pb-2 pr-4 font-normal">n</th>
+              <th className="text-right pb-2 pr-4 font-normal">Planned R</th>
+              <th className="text-right pb-2 pr-4 font-normal">Realized R</th>
+              <th className="text-right pb-2 pr-4 font-normal">Shortfall</th>
+              <th className="text-right pb-2 pr-4 font-normal">Realization %</th>
+              <th className="text-right pb-2 font-normal">Target Hit %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ranked.map((name) => {
+              const s = report.by_setup[name];
+              if (!s) return null;
+              const hasSignal = s.rr_sample_count >= SIGNAL_RR_N;
+              return (
+                <tr key={name} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                  <td className="py-2 pr-4 text-gray-100 font-medium">{name}</td>
+                  <td className="py-2 pr-4 text-right font-mono text-gray-300">
+                    {s.rr_sample_count}
+                    {!hasSignal && (
+                      <span className="text-gray-600 ml-1" title="Need ≥ 3 trades for signals">*</span>
+                    )}
+                  </td>
+                  <td className="py-2 pr-4 text-right font-mono text-gray-300">
+                    {s.rr_avg_planned_rr != null ? `${s.rr_avg_planned_rr.toFixed(2)}R` : "—"}
+                  </td>
+                  <td className={`py-2 pr-4 text-right font-mono ${pnlColor(s.rr_avg_actual_r)}`}>
+                    {s.rr_avg_actual_r != null ? `${s.rr_avg_actual_r > 0 ? "+" : ""}${s.rr_avg_actual_r.toFixed(2)}R` : "—"}
+                  </td>
+                  <td className={`py-2 pr-4 text-right font-mono ${pnlColor(s.rr_avg_shortfall)}`}>
+                    {s.rr_avg_shortfall != null ? `${s.rr_avg_shortfall > 0 ? "+" : ""}${s.rr_avg_shortfall.toFixed(2)}R` : "—"}
+                  </td>
+                  <td className={`py-2 pr-4 text-right font-mono font-semibold ${hasSignal ? rrColor(s.rr_realization_pct) : "text-gray-400"}`}>
+                    {s.rr_realization_pct != null ? `${s.rr_realization_pct.toFixed(0)}%` : "—"}
+                  </td>
+                  <td className={`py-2 text-right font-mono ${hasSignal ? rrColor(s.rr_pct_met_target) : "text-gray-400"}`}>
+                    {s.rr_pct_met_target != null ? `${s.rr_pct_met_target.toFixed(0)}%` : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {ranked.some((n) => (report.by_setup[n]?.rr_sample_count ?? 0) < SIGNAL_RR_N) && (
+          <p className="text-xs text-gray-600 mt-2">* fewer than {SIGNAL_RR_N} qualifying trades — color signals not shown</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 // ── Setup card with edit/delete ───────────────────────────────────────────────
 
 function SetupCard({
@@ -391,6 +473,14 @@ function SetupCard({
                   {fmtPnl(stats.total_net_profit)}
                 </p>
               </div>
+              {stats.rr_sample_count > 0 && (
+                <div title={`Based on ${stats.rr_sample_count} linked plan(s) with planned R:R set`}>
+                  <p className="text-xs text-gray-500">R:R Real.</p>
+                  <p className={`text-sm font-mono font-semibold ${stats.rr_sample_count >= SIGNAL_RR_N ? rrColor(stats.rr_realization_pct) : "text-gray-400"}`}>
+                    {stats.rr_realization_pct != null ? `${stats.rr_realization_pct.toFixed(0)}%` : "—"}
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-xs text-gray-600">No trade data</p>
@@ -540,6 +630,11 @@ export default function SetupsPage() {
       )}
 
       {isLoading && <p className="text-gray-500 text-sm">Loading…</p>}
+
+      {/* R:R realization ranking (only when account selected and data available) */}
+      {accountId && setupReport && (
+        <SetupRRTable report={setupReport} />
+      )}
 
       {/* Empty state */}
       {!isLoading && setups.length === 0 && !showCreate && (

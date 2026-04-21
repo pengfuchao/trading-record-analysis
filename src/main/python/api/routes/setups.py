@@ -17,6 +17,7 @@ from src.main.python.api.schemas.setups import (
 from src.main.python.core.setup_analyzer import SetupAnalyzer
 from src.main.python.models.setup import SetupDefinition
 from src.main.python.services.setup_repository import SetupRepository
+from src.main.python.services.trade_plan_repository import TradePlanRepository
 
 # ── Setup Definitions (CRUD) ──────────────────────────────────────────────────
 setup_defs_router = APIRouter(prefix="/setups", tags=["setups"])
@@ -115,5 +116,20 @@ def get_setup_report(
         to_date=to_date,
         page_size=10_000,
     )
+
+    # Enrich trades with planned_rr from linked plans so SetupAnalyzer can
+    # compute per-setup R:R realization (same pattern as analytics.py).
+    plan_repo = TradePlanRepository(db)
+    linked_plan_ids = {t.trade_plan_id for t in trades if t.trade_plan_id is not None}
+    if linked_plan_ids:
+        plans_by_id = {
+            p.plan_id: p
+            for p in plan_repo.list_by_account(account_id)
+            if p.plan_id in linked_plan_ids
+        }
+        for trade in trades:
+            if trade.trade_plan_id and trade.trade_plan_id in plans_by_id:
+                trade.planned_rr = plans_by_id[trade.trade_plan_id].planned_rr
+
     report = _analyzer.generate_report(trades, account_id)
     return setup_report_to_response(report)
