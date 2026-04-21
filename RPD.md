@@ -37,6 +37,7 @@ A professional trading journal and account analytics platform for discretionary 
 | Daily Reviews | Post-market review CRUD (PnL, mistakes, emotional summary, reflection) | Complete |
 | Mistake Analysis | Mistake frequency/cost ranking on dashboard | Complete |
 | Plan-vs-Execution | Planned/unplanned + followed/deviated comparison, planned R:R vs realized R, coaching signals, dashboard panels | Complete |
+| R:R Trend | Weekly R:R realization trend chart on dashboard, trend signal (improving/worsening/stable), coaching integration | Complete |
 | Setup Analytics | Per-setup win rate, avg PnL, profit factor, ranking | Complete |
 | AI Coaching | Weekly review via Anthropic Claude API, rule-based fallback, review history | Complete |
 | MT5 Sync | Config UI, manual trigger, run history, open positions, partial close reconstruction, background polling | Complete |
