@@ -483,6 +483,32 @@ class SegmentAnalyticsResponse(BaseModel):
     worst_session: Optional[str]        # lowest profit_factor, n >= 3, != "Unknown"
 
 
+# ── Exit outcome decomposition ────────────────────────────────────────────────
+
+class ExitBucketResponse(BaseModel):
+    """Statistics for one exit outcome category."""
+    count: int
+    total_pnl: float
+    avg_r: Optional[float]
+    pct_of_total: Optional[float]   # count / total_classified * 100
+
+
+class ExitDecompositionResponse(BaseModel):
+    """
+    Exit outcome decomposition.
+    pct_of_total values are relative to total_classified (trades with actual_r_multiple).
+    total_unclassified counts trades with no actual_r_multiple.
+    """
+    total_classified: int
+    total_unclassified: int
+    stop_hit: ExitBucketResponse
+    manual_cut: ExitBucketResponse
+    target_hit: ExitBucketResponse
+    exit_before_target: ExitBucketResponse
+    unclear: ExitBucketResponse
+    coaching_signals: List[str]
+
+
 # ── Import history ─────────────────────────────────────────────────────────────
 
 class ImportHistoryEntry(BaseModel):

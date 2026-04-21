@@ -101,3 +101,4 @@ class Trade:
 
     # Transient — populated from the linked TradePlan at analytics time (not stored in trade table)
     planned_rr: Optional[float] = None
+    planned_take_profit: Optional[float] = None

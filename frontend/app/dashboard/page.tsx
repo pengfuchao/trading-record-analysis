@@ -6,7 +6,7 @@ import {
   AreaChart, Area, LineChart, Line, ComposedChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { api, Account, FtmoStatus, MT5SyncStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse, RRTrendBucket, RRTrendReportResponse, SegmentRow, SegmentAnalyticsResponse } from "@/lib/api";
+import { api, Account, ExitBucket, ExitDecompositionResponse, FtmoStatus, MT5SyncStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse, RRTrendBucket, RRTrendReportResponse, SegmentRow, SegmentAnalyticsResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import StatCard from "@/components/StatCard";
@@ -765,6 +765,64 @@ function Mt5FreshnessPill({ mt5Status }: { mt5Status: MT5SyncStatus }) {
 
 // ── Segment analytics table ────────────────────────────────────────────────────
 
+const EXIT_BUCKETS: { key: keyof ExitDecompositionResponse; label: string; color: string }[] = [
+  { key: "stop_hit",           label: "Stop Hit",           color: "text-red-400" },
+  { key: "manual_cut",         label: "Manual Cut",         color: "text-orange-400" },
+  { key: "target_hit",         label: "Target Hit",         color: "text-green-400" },
+  { key: "exit_before_target", label: "Exit Before Target", color: "text-yellow-400" },
+  { key: "unclear",            label: "Unclear",            color: "text-gray-500" },
+];
+
+function ExitDecompositionPanel({ data }: { data: ExitDecompositionResponse }) {
+  if (data.total_classified === 0 && data.total_unclassified === 0) return null;
+  return (
+    <div className="space-y-3">
+      <div className="text-xs text-gray-500 mb-1">
+        {data.total_classified} classified · {data.total_unclassified} without R multiple
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-gray-500 border-b border-gray-800">
+            <th className="text-left py-1.5 pr-3 font-medium">Exit Type</th>
+            <th className="text-right py-1.5 px-2 font-medium">Count</th>
+            <th className="text-right py-1.5 px-2 font-medium">% of total</th>
+            <th className="text-right py-1.5 px-2 font-medium">Total PnL</th>
+            <th className="text-right py-1.5 px-2 font-medium">Avg R</th>
+          </tr>
+        </thead>
+        <tbody>
+          {EXIT_BUCKETS.map(({ key, label, color }) => {
+            const b = data[key] as ExitBucket;
+            if (b.count === 0) return null;
+            return (
+              <tr key={key} className="border-b border-gray-800/50">
+                <td className={`py-1.5 pr-3 font-medium ${color}`}>{label}</td>
+                <td className="text-right px-2 text-gray-400">{b.count}</td>
+                <td className="text-right px-2 text-gray-300">
+                  {b.pct_of_total != null ? `${b.pct_of_total.toFixed(0)}%` : "—"}
+                </td>
+                <td className={`text-right px-2 ${b.total_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {fmtPnl(b.total_pnl)}
+                </td>
+                <td className="text-right px-2 text-gray-400">
+                  {b.avg_r != null ? b.avg_r.toFixed(2) : "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {data.coaching_signals.length > 0 && (
+        <ul className="space-y-1 pt-1">
+          {data.coaching_signals.map((s, i) => (
+            <li key={i} className="text-xs text-gray-400 pl-3 border-l-2 border-blue-800">{s}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function SegmentTable({ rows, label }: { rows: SegmentRow[]; label: string }) {
   if (rows.length === 0) return null;
   const hasR = rows.some((r) => r.avg_r !== null);
@@ -898,6 +956,14 @@ export default function DashboardPage() {
   const { data: segmentData } = useSWR(
     accountId ? `segment-analytics-${accountId}-${fromDate}-${toDate}` : null,
     () => api.getSegmentAnalytics(accountId, {
+      from_date: fromDate || undefined,
+      to_date: toDate || undefined,
+    })
+  );
+
+  const { data: exitData } = useSWR(
+    accountId ? `exit-decomp-${accountId}-${fromDate}-${toDate}` : null,
+    () => api.getExitDecomposition(accountId, {
       from_date: fromDate || undefined,
       to_date: toDate || undefined,
     })
@@ -1188,6 +1254,13 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+        </section>
+      )}
+
+      {exitData && exitData.total_classified > 0 && (
+        <section className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <h2 className="text-sm font-semibold text-gray-300 mb-3">Exit Outcome Decomposition</h2>
+          <ExitDecompositionPanel data={exitData} />
         </section>
       )}
     </div>

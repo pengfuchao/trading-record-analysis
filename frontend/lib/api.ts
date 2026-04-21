@@ -254,6 +254,15 @@ export const api = {
     const qs = q.toString();
     return request<SegmentAnalyticsResponse>(`/accounts/${accountId}/segment-analytics${qs ? `?${qs}` : ""}`);
   },
+
+  // Exit outcome decomposition
+  getExitDecomposition: (accountId: string, params?: DateRange) => {
+    const q = new URLSearchParams();
+    if (params?.from_date) q.set("from_date", params.from_date);
+    if (params?.to_date) q.set("to_date", endOfDay(params.to_date)!);
+    const qs = q.toString();
+    return request<ExitDecompositionResponse>(`/accounts/${accountId}/exit-decomposition${qs ? `?${qs}` : ""}`);
+  },
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -838,6 +847,24 @@ export interface RRComparisonResponse {
   met_target_count: number;
   missed_target_count: number;
   pct_met_target?: number;
+  coaching_signals: string[];
+}
+
+export interface ExitBucket {
+  count: number;
+  total_pnl: number;
+  avg_r: number | null;
+  pct_of_total: number | null;
+}
+
+export interface ExitDecompositionResponse {
+  total_classified: number;
+  total_unclassified: number;
+  stop_hit: ExitBucket;
+  manual_cut: ExitBucket;
+  target_hit: ExitBucket;
+  exit_before_target: ExitBucket;
+  unclear: ExitBucket;
   coaching_signals: string[];
 }
 

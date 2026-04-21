@@ -5,8 +5,8 @@ from typing import Callable, Dict, List, Optional
 
 from src.main.python.core.metrics_calculator import MetricsCalculator
 from src.main.python.core.performance_summary import (
-    AccountReport, PerformanceSummary, PlanAdherenceGroup, PlanAdherenceReport,
-    RRComparisonReport, RRTrendBucket, RRTrendReport,
+    AccountReport, ExitDecompositionReport, PerformanceSummary, PlanAdherenceGroup,
+    PlanAdherenceReport, RRComparisonReport, RRTrendBucket, RRTrendReport,
 )
 from src.main.python.models.account import Account
 from src.main.python.models.enums import TradeResult
@@ -705,4 +705,147 @@ class AccountAnalytics:
             trend_signal=trend_signal,
         )
 
-        return signals
+    # ── Exit outcome decomposition ─────────────────────────────────────────────
+
+    @staticmethod
+    def _get_tp_level(trade: Trade) -> Optional[float]:
+        """Return the best available take-profit level for exit classification."""
+        if trade.take_profit is not None:
+            return trade.take_profit
+        if trade.planned_take_profit is not None:
+            return trade.planned_take_profit
+        # Infer TP from planned_rr + entry_price + stop_loss
+        if (
+            trade.planned_rr is not None
+            and trade.planned_rr > 0
+            and trade.entry_price is not None
+            and trade.stop_loss is not None
+            and trade.direction is not None
+        ):
+            from src.main.python.models.enums import Direction
+            sl_dist = abs(trade.entry_price - trade.stop_loss)
+            if sl_dist > 0:
+                if trade.direction == Direction.LONG:
+                    return trade.entry_price + trade.planned_rr * sl_dist
+                else:
+                    return trade.entry_price - trade.planned_rr * sl_dist
+        return None
+
+    @staticmethod
+    def _classify_exit(trade: Trade) -> str:
+        """
+        Classify one trade exit. Returns:
+          "stop_hit" | "manual_cut" | "target_hit" | "exit_before_target" | "unclear"
+        """
+        from src.main.python.models.enums import Direction
+
+        r = trade.actual_r_multiple
+        if r is None:
+            return "unclear"
+
+        # Stop hit: R ≤ -0.85 (within 15% of full stop)
+        if r <= -0.85:
+            return "stop_hit"
+
+        # Manual cut (loss side): lost money but cut well before stop
+        if trade.result == TradeResult.LOSS and r > -0.65:
+            return "manual_cut"
+
+        # Win side: classify against TP level
+        if trade.result == TradeResult.WIN:
+            tp = AccountAnalytics._get_tp_level(trade)
+            if (
+                tp is not None
+                and trade.entry_price is not None
+                and trade.exit_price is not None
+                and trade.direction is not None
+            ):
+                if trade.direction == Direction.LONG:
+                    tp_dist = tp - trade.entry_price
+                    actual_dist = trade.exit_price - trade.entry_price
+                elif trade.direction == Direction.SHORT:
+                    tp_dist = trade.entry_price - tp
+                    actual_dist = trade.entry_price - trade.exit_price
+                else:
+                    return "unclear"
+                if tp_dist > 0:
+                    reach_pct = actual_dist / tp_dist
+                    return "target_hit" if reach_pct >= 0.90 else "exit_before_target"
+
+        return "unclear"
+
+    @staticmethod
+    def compute_exit_decomposition(trades: List[Trade]) -> "ExitDecompositionReport":
+        """
+        Decompose exit outcomes across all provided trades.
+        Trades without actual_r_multiple are excluded from buckets; their count is
+        reported in total_unclassified.
+        """
+        from src.main.python.core.performance_summary import ExitBucket, ExitDecompositionReport
+
+        classified = [t for t in trades if t.actual_r_multiple is not None]
+        total_unclassified = len(trades) - len(classified)
+
+        bucket_trades: Dict[str, List[Trade]] = {
+            k: [] for k in ("stop_hit", "manual_cut", "target_hit", "exit_before_target", "unclear")
+        }
+        for trade in classified:
+            bucket_trades[AccountAnalytics._classify_exit(trade)].append(trade)
+
+        total = len(classified)
+
+        def _make_bucket(tlist: List[Trade]) -> ExitBucket:
+            count = len(tlist)
+            total_pnl = sum(t.net_pnl or 0.0 for t in tlist)
+            r_vals = [t.actual_r_multiple for t in tlist if t.actual_r_multiple is not None]
+            avg_r = round(sum(r_vals) / len(r_vals), 2) if r_vals else None
+            pct = round(count / total * 100, 1) if total else None
+            return ExitBucket(count=count, total_pnl=round(total_pnl, 2), avg_r=avg_r, pct_of_total=pct)
+
+        stop_b = _make_bucket(bucket_trades["stop_hit"])
+        cut_b = _make_bucket(bucket_trades["manual_cut"])
+        target_b = _make_bucket(bucket_trades["target_hit"])
+        early_b = _make_bucket(bucket_trades["exit_before_target"])
+        unclear_b = _make_bucket(bucket_trades["unclear"])
+
+        signals: List[str] = []
+        n_losses = sum(1 for t in classified if t.result == TradeResult.LOSS)
+        tp_wins = target_b.count + early_b.count
+
+        if cut_b.count >= 2 and n_losses > 0:
+            cut_pct = round(cut_b.count / n_losses * 100)
+            avg_r_str = f" (avg {cut_b.avg_r:+.2f}R)" if cut_b.avg_r is not None else ""
+            signals.append(
+                f"{cut_pct}% of losses were manual cuts before stop{avg_r_str}. "
+                f"Review whether these were disciplined risk management or fear-based exits."
+            )
+
+        if tp_wins >= 3:
+            hit_pct = round(target_b.count / tp_wins * 100)
+            if hit_pct < 50:
+                signals.append(
+                    f"Only {hit_pct}% of wins with a known target reached it. "
+                    f"Consider holding longer or reviewing whether targets are set at realistic levels."
+                )
+            elif hit_pct >= 80:
+                signals.append(
+                    f"{hit_pct}% of wins with a known target reached or exceeded it — "
+                    f"strong target-following discipline."
+                )
+
+        if total >= 5 and unclear_b.count / total >= 0.5:
+            signals.append(
+                f"{round(unclear_b.count / total * 100)}% of trades are 'unclear' exits. "
+                f"Add take_profit levels to trades or link plans with planned_rr to improve classification."
+            )
+
+        return ExitDecompositionReport(
+            total_classified=total,
+            total_unclassified=total_unclassified,
+            stop_hit=stop_b,
+            manual_cut=cut_b,
+            target_hit=target_b,
+            exit_before_target=early_b,
+            unclear=unclear_b,
+            coaching_signals=signals,
+        )

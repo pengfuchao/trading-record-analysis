@@ -172,6 +172,43 @@ class RRTrendReport:
 
 
 @dataclass
+class ExitBucket:
+    """Statistics for one exit outcome category."""
+    count: int
+    total_pnl: float
+    avg_r: Optional[float]          # None if no actual_r_multiple data in bucket
+    pct_of_total: Optional[float]   # count / total_classified * 100; None if total=0
+
+
+@dataclass
+class ExitDecompositionReport:
+    """
+    Exit outcome decomposition.
+
+    Classification uses actual_r_multiple as the primary signal; take_profit /
+    planned_take_profit / inferred TP (from planned_rr + SL) as secondary for WIN trades.
+
+    Thresholds (conservative):
+      stop_hit:           actual_r ≤ -0.85 (within 15% of full stop distance)
+      manual_cut:         LOSS AND actual_r > -0.65 (cut before 65% of stop)
+      target_hit:         WIN AND has TP info AND reached ≥90% of TP distance
+      exit_before_target: WIN AND has TP info AND reached <90% of TP distance
+      unclear:            everything else with actual_r_multiple set
+
+    total_unclassified counts trades where actual_r_multiple is None.
+    pct_of_total on each bucket is relative to total_classified.
+    """
+    total_classified: int
+    total_unclassified: int
+    stop_hit: ExitBucket
+    manual_cut: ExitBucket
+    target_hit: ExitBucket
+    exit_before_target: ExitBucket
+    unclear: ExitBucket
+    coaching_signals: List[str] = field(default_factory=list)
+
+
+@dataclass
 class AccountReport:
     # ── Identity ───────────────────────────────────────────────────────────
     account_id:          str

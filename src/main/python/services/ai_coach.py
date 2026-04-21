@@ -9,7 +9,7 @@ from typing import List, Optional
 
 from src.main.python.core.account_analytics import AccountAnalytics
 from src.main.python.core.mistake_analyzer import MistakeAnalyzer
-from src.main.python.core.performance_summary import PlanAdherenceGroup, RRComparisonReport
+from src.main.python.core.performance_summary import ExitDecompositionReport, PlanAdherenceGroup, RRComparisonReport
 from src.main.python.core.setup_analyzer import SetupAnalyzer
 from src.main.python.models.account import Account
 from src.main.python.models.trade import Trade
@@ -79,6 +79,13 @@ class CoachingContext:
     worst_session: Optional[str] = None
     worst_session_pf: Optional[float] = None
     best_session_pf: Optional[float] = None
+
+    # Exit outcome decomposition (populated when total_classified >= 3)
+    exit_stop_hit_pct: Optional[float] = None        # % of classified trades that hit stop
+    exit_manual_cut_pct: Optional[float] = None      # % of losses that were manual cuts
+    exit_target_hit_pct: Optional[float] = None      # % of TP-eligible wins that reached target
+    exit_unclear_pct: Optional[float] = None         # % of classified trades that are unclear
+    exit_decomp_signals: List[str] = field(default_factory=list)
 
 
 # ── Generation result ──────────────────────────────────────────────────────────
@@ -262,6 +269,22 @@ class AICoachService:
                 worst_session_pf = worst_sess[1].profit_factor
                 best_session_pf = best_sess[1].profit_factor
 
+        # Exit outcome decomposition
+        exit_report = AccountAnalytics.compute_exit_decomposition(trades)
+        exit_stop_hit_pct: Optional[float] = None
+        exit_manual_cut_pct: Optional[float] = None
+        exit_target_hit_pct: Optional[float] = None
+        exit_unclear_pct: Optional[float] = None
+        if exit_report.total_classified >= 3:
+            exit_stop_hit_pct = exit_report.stop_hit.pct_of_total
+            exit_unclear_pct = exit_report.unclear.pct_of_total
+            n_losses = exit_report.stop_hit.count + exit_report.manual_cut.count
+            if n_losses > 0 and exit_report.manual_cut.count > 0:
+                exit_manual_cut_pct = round(exit_report.manual_cut.count / n_losses * 100, 1)
+            tp_wins = exit_report.target_hit.count + exit_report.exit_before_target.count
+            if tp_wins > 0:
+                exit_target_hit_pct = round(exit_report.target_hit.count / tp_wins * 100, 1)
+
         return CoachingContext(
             from_date=from_date,
             to_date=to_date,
@@ -310,6 +333,11 @@ class AICoachService:
             worst_session=worst_session,
             worst_session_pf=worst_session_pf,
             best_session_pf=best_session_pf,
+            exit_stop_hit_pct=exit_stop_hit_pct,
+            exit_manual_cut_pct=exit_manual_cut_pct,
+            exit_target_hit_pct=exit_target_hit_pct,
+            exit_unclear_pct=exit_unclear_pct,
+            exit_decomp_signals=exit_report.coaching_signals,
         )
 
     # ── AI path ────────────────────────────────────────────────────────────────
@@ -776,6 +804,20 @@ class AICoachService:
         else:
             rr_trend_block = "  not enough weekly buckets to determine trend (need >= 4)"
 
+        # ── Exit decomposition block ──────────────────────────────────────────
+        exit_lines = []
+        if ctx.exit_stop_hit_pct is not None:
+            exit_lines.append(f"  Stop hit: {ctx.exit_stop_hit_pct:.0f}% of classified exits")
+        if ctx.exit_manual_cut_pct is not None:
+            exit_lines.append(f"  Manual cut (before stop): {ctx.exit_manual_cut_pct:.0f}% of losses")
+        if ctx.exit_target_hit_pct is not None:
+            exit_lines.append(f"  Target hit (≥90% of TP): {ctx.exit_target_hit_pct:.0f}% of TP-eligible wins")
+        if ctx.exit_unclear_pct is not None:
+            exit_lines.append(f"  Unclear exits: {ctx.exit_unclear_pct:.0f}% (no TP info or grey zone)")
+        for sig in ctx.exit_decomp_signals:
+            exit_lines.append(f"  Signal: {sig}")
+        exit_block = "\n".join(exit_lines) if exit_lines else "  not enough data (need actual_r_multiple set on trades)"
+
         return f"""You are a professional trading coach reviewing a trader's performance.
 Analyze the data below and provide a structured JSON coaching review.
 
@@ -800,6 +842,9 @@ PER-SETUP R:R EXECUTION:
 
 R:R REALIZATION TREND (weekly):
 {rr_trend_block}
+
+EXIT OUTCOME DECOMPOSITION:
+{exit_block}
 
 SYMBOL EDGE:
 {symbol_block}

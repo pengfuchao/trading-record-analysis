@@ -10,6 +10,8 @@ from src.main.python.api.dependencies import get_db, get_account_repo, get_trade
 from src.main.python.api.schemas.analytics import (
     AccountReportResponse,
     AnalyticsSummaryResponse,
+    ExitBucketResponse,
+    ExitDecompositionResponse,
     FtmoCheckResponse,
     FtmoStatusResponse,
     PlanAdherenceResponse,
@@ -296,6 +298,69 @@ def get_segment_analytics(
         worst_symbol=worst_symbol,
         best_session=best_session,
         worst_session=worst_session,
+    )
+
+
+@router.get("/{account_id}/exit-decomposition", response_model=ExitDecompositionResponse)
+def get_exit_decomposition(
+    account_id: str,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Exit outcome decomposition: stop_hit / manual_cut / target_hit / exit_before_target / unclear.
+
+    Classification uses actual_r_multiple as the primary signal.
+    TP levels come from (in priority order): trade.take_profit, trade.planned_take_profit,
+    or inferred from planned_rr + SL if both are set on the linked plan.
+
+    Requires actual_r_multiple to be set on trades — use /recompute-r to populate.
+    """
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    require_account(account_id, account_repo)
+    trades, _ = trade_repo.get_by_account_filtered(
+        account_id,
+        from_date=from_date,
+        to_date=to_date,
+        page_size=10_000,
+    )
+
+    # Enrich trades with planned_rr and planned_take_profit from linked plans
+    plan_repo = TradePlanRepository(db)
+    linked_plan_ids = {t.trade_plan_id for t in trades if t.trade_plan_id is not None}
+    if linked_plan_ids:
+        plans_by_id = {
+            p.plan_id: p
+            for p in plan_repo.list_by_account(account_id)
+            if p.plan_id in linked_plan_ids
+        }
+        for trade in trades:
+            if trade.trade_plan_id and trade.trade_plan_id in plans_by_id:
+                plan = plans_by_id[trade.trade_plan_id]
+                trade.planned_rr = plan.planned_rr
+                trade.planned_take_profit = plan.planned_take_profit
+
+    report = AccountAnalytics.compute_exit_decomposition(trades)
+
+    def _bucket(b) -> ExitBucketResponse:
+        return ExitBucketResponse(
+            count=b.count,
+            total_pnl=b.total_pnl,
+            avg_r=b.avg_r,
+            pct_of_total=b.pct_of_total,
+        )
+
+    return ExitDecompositionResponse(
+        total_classified=report.total_classified,
+        total_unclassified=report.total_unclassified,
+        stop_hit=_bucket(report.stop_hit),
+        manual_cut=_bucket(report.manual_cut),
+        target_hit=_bucket(report.target_hit),
+        exit_before_target=_bucket(report.exit_before_target),
+        unclear=_bucket(report.unclear),
+        coaching_signals=report.coaching_signals,
     )
 
 
