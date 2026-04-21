@@ -151,6 +151,27 @@ class PlanAdherenceReport:
 
 
 @dataclass
+class RRTrendBucket:
+    """One time bucket in an R:R realization trend series."""
+    bucket: str                      # ISO week label, e.g. "2026-W15"
+    bucket_start: datetime           # Monday 00:00 of the ISO week (UTC-naive)
+    n: int                           # qualifying trades in this bucket
+    avg_planned_rr: float
+    avg_actual_r: float
+    avg_shortfall: float             # avg_actual_r - avg_planned_rr; negative = fell short
+    realization_pct: Optional[float] # (avg_actual_r / avg_planned_rr) * 100; None if planned=0
+
+
+@dataclass
+class RRTrendReport:
+    """Time-series R:R realization analysis for an account."""
+    buckets: List[RRTrendBucket] = field(default_factory=list)
+    total_qualifying: int = 0
+    # "improving" | "worsening" | "stable" | None (None when < 4 buckets with data)
+    trend_signal: Optional[str] = None
+
+
+@dataclass
 class AccountReport:
     # ── Identity ───────────────────────────────────────────────────────────
     account_id:          str

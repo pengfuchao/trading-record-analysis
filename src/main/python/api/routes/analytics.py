@@ -13,6 +13,8 @@ from src.main.python.api.schemas.analytics import (
     FtmoCheckResponse,
     FtmoStatusResponse,
     PlanAdherenceResponse,
+    RRTrendBucketResponse,
+    RRTrendReportResponse,
     plan_adherence_to_response,
     report_to_response,
     report_to_summary,
@@ -160,6 +162,61 @@ def get_plan_adherence(
 
     report = AccountAnalytics.compute_plan_adherence(trades)
     return plan_adherence_to_response(report)
+
+
+@router.get("/{account_id}/rr-trend", response_model=RRTrendReportResponse)
+def get_rr_trend(
+    account_id: str,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Weekly R:R realization trend for the account.
+
+    Buckets qualifying trades (linked plan + planned_rr > 0 + actual_r_multiple)
+    by ISO week and returns realization_pct per bucket.  Sparse weeks are skipped.
+    trend_signal is "improving" | "worsening" | "stable" | None (needs >= 4 buckets).
+    """
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    require_account(account_id, account_repo)
+    trades, _ = trade_repo.get_by_account_filtered(
+        account_id,
+        from_date=from_date,
+        to_date=to_date,
+        page_size=10_000,
+    )
+
+    plan_repo = TradePlanRepository(db)
+    linked_plan_ids = {t.trade_plan_id for t in trades if t.trade_plan_id is not None}
+    if linked_plan_ids:
+        plans_by_id = {
+            p.plan_id: p
+            for p in plan_repo.list_by_account(account_id)
+            if p.plan_id in linked_plan_ids
+        }
+        for trade in trades:
+            if trade.trade_plan_id and trade.trade_plan_id in plans_by_id:
+                trade.planned_rr = plans_by_id[trade.trade_plan_id].planned_rr
+
+    report = AccountAnalytics.compute_rr_trend(trades)
+    return RRTrendReportResponse(
+        buckets=[
+            RRTrendBucketResponse(
+                bucket=b.bucket,
+                bucket_start=b.bucket_start,
+                n=b.n,
+                avg_planned_rr=b.avg_planned_rr,
+                avg_actual_r=b.avg_actual_r,
+                avg_shortfall=b.avg_shortfall,
+                realization_pct=b.realization_pct,
+            )
+            for b in report.buckets
+        ],
+        total_qualifying=report.total_qualifying,
+        trend_signal=report.trend_signal,
+    )
 
 
 @router.get("/{account_id}/report", response_model=AccountReportResponse)

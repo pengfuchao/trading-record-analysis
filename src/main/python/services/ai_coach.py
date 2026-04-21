@@ -67,6 +67,9 @@ class CoachingContext:
     best_rr_setup:                  Optional[str]   = None  # setup with highest realization_pct
     best_rr_setup_realization_pct:  Optional[float] = None
 
+    # R:R realization trend (populated when >= 4 weekly buckets with data)
+    rr_trend_signal: Optional[str] = None   # "improving" | "worsening" | "stable" | None
+
 
 # ── Generation result ──────────────────────────────────────────────────────────
 
@@ -183,6 +186,9 @@ class AICoachService:
 
         rr = plan_report.rr_comparison
 
+        # R:R realization trend (weekly buckets)
+        trend = AccountAnalytics.compute_rr_trend(trades)
+
         # Per-setup R:R breakdown — find best and worst setups by realization_pct
         # Trades already have planned_rr pre-populated by the calling route.
         setup_report = SetupAnalyzer().generate_report(trades, account.account_id)
@@ -245,6 +251,7 @@ class AICoachService:
             worst_rr_setup_realization_pct=worst_rr_setup_pct,
             best_rr_setup=best_rr_setup,
             best_rr_setup_realization_pct=best_rr_setup_pct,
+            rr_trend_signal=trend.trend_signal,
         )
 
     # ── AI path ────────────────────────────────────────────────────────────────
@@ -497,17 +504,27 @@ class AICoachService:
                     f" Your biggest R:R leakage is on '{ctx.worst_rr_setup}' "
                     f"({ctx.worst_rr_setup_realization_pct:.0f}% realization) — start there."
                 )
+            trend_note = ""
+            if ctx.rr_trend_signal == "improving":
+                trend_note = " R:R realization is improving week-over-week — the work is paying off."
+            elif ctx.rr_trend_signal == "worsening":
+                trend_note = " R:R realization is declining week-over-week — this needs immediate attention."
             improvement = (
                 f"Stop adjusting take-profits during the trade. "
                 f"Your planned R:R is {ctx.avg_planned_rr:.2f}R on average; you are only realizing "
-                f"{ctx.avg_actual_r:+.2f}R ({ctx.realization_pct:.0f}%).{setup_note} "
+                f"{ctx.avg_actual_r:+.2f}R ({ctx.realization_pct:.0f}%).{setup_note}{trend_note} "
                 f"For the next 5 trades, set your TP at the planned level and do not move it until "
                 f"price either hits it or the position is stopped out."
             )
         elif rr_above_100 and ctx.avg_planned_rr is not None:
+            trend_note = ""
+            if ctx.rr_trend_signal == "improving":
+                trend_note = " R:R realization is trending upward week-over-week — keep it up."
+            elif ctx.rr_trend_signal == "worsening":
+                trend_note = " Note: R:R realization has been declining recently — watch for complacency."
             improvement = (
                 f"Strong R:R execution — you are delivering {ctx.realization_pct:.0f}% of planned "
-                f"R:R ({ctx.avg_actual_r:+.2f}R vs {ctx.avg_planned_rr:.2f}R planned). "
+                f"R:R ({ctx.avg_actual_r:+.2f}R vs {ctx.avg_planned_rr:.2f}R planned).{trend_note} "
                 f"Keep recording planned_rr on every trade plan and continue holding to targets."
             )
         elif ctx.top_mistakes:
@@ -655,6 +672,12 @@ class AICoachService:
             )
         setup_rr_block = "\n".join(setup_rr_lines) if setup_rr_lines else "  not enough per-setup data"
 
+        # ── R:R trend block ───────────────────────────────────────────────────
+        if ctx.rr_trend_signal:
+            rr_trend_block = f"  Trend direction (first-half vs second-half weekly buckets): {ctx.rr_trend_signal.upper()}"
+        else:
+            rr_trend_block = "  not enough weekly buckets to determine trend (need >= 4)"
+
         return f"""You are a professional trading coach reviewing a trader's performance.
 Analyze the data below and provide a structured JSON coaching review.
 
@@ -676,6 +699,9 @@ PLANNED R:R vs REALIZED R:
 
 PER-SETUP R:R EXECUTION:
 {setup_rr_block}
+
+R:R REALIZATION TREND (weekly):
+{rr_trend_block}
 
 TOP MISTAKES (by total cost):
 {mistakes_block}

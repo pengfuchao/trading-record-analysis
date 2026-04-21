@@ -141,6 +141,15 @@ export const api = {
   getSetupReport: (accountId: string) =>
     request<SetupReportResponse>(`/accounts/${accountId}/setups`),
 
+  // R:R realization trend
+  getRRTrend: (accountId: string, params?: DateRange) => {
+    const q = new URLSearchParams();
+    if (params?.from_date) q.set("from_date", params.from_date);
+    if (params?.to_date) q.set("to_date", endOfDay(params.to_date)!);
+    const qs = q.toString();
+    return request<RRTrendReportResponse>(`/accounts/${accountId}/rr-trend${qs ? `?${qs}` : ""}`);
+  },
+
   // Daily Plans
   listPlans: (accountId: string, params?: DateRange) => {
     const q = new URLSearchParams();
@@ -532,6 +541,22 @@ export interface SetupReportResponse {
   ranked_by_total_profit: string[];
   ranked_by_drawdown: string[];
   ranked_by_rr_realization: string[];
+}
+
+export interface RRTrendBucket {
+  bucket: string;         // "2026-W15"
+  bucket_start: string;
+  n: number;
+  avg_planned_rr: number;
+  avg_actual_r: number;
+  avg_shortfall: number;
+  realization_pct: number | null;
+}
+
+export interface RRTrendReportResponse {
+  buckets: RRTrendBucket[];
+  total_qualifying: number;
+  trend_signal: string | null;  // "improving" | "worsening" | "stable" | null
 }
 
 export interface DailyPlan {

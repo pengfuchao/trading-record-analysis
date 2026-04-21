@@ -3,10 +3,10 @@
 import { useState } from "react";
 import useSWR, { mutate as globalMutate } from "swr";
 import {
-  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine,
+  AreaChart, Area, LineChart, Line, ComposedChart, Bar, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { api, Account, FtmoStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse } from "@/lib/api";
+import { api, Account, FtmoStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse, RRTrendBucket, RRTrendReportResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import StatCard from "@/components/StatCard";
@@ -606,6 +606,102 @@ function PlanAdherencePanel({ data }: { data: PlanAdherenceResponse }) {
   );
 }
 
+// ── R:R Realization Trend chart ───────────────────────────────────────────────
+
+const TREND_COLORS = {
+  improving: "text-green-400",
+  worsening: "text-red-400",
+  stable:    "text-yellow-400",
+} as const;
+
+function rrTrendBarColor(pct: number | null): string {
+  if (pct == null) return "#6b7280";
+  if (pct >= 90) return "#34d399";
+  if (pct >= 60) return "#fbbf24";
+  return "#f87171";
+}
+
+function fmtWeek(bucket: string): string {
+  // "2026-W15" → "W15" or "Apr W15" — keep it short
+  const m = bucket.match(/^(\d{4})-W(\d+)$/);
+  if (!m) return bucket;
+  return `W${m[2]}`;
+}
+
+function RRTrendChart({ report }: { report: RRTrendReportResponse }) {
+  if (report.buckets.length === 0) return null;
+
+  const MIN_SIGNAL_N = 3;
+  const data = report.buckets.map((b) => ({
+    label: fmtWeek(b.bucket),
+    pct: b.realization_pct,
+    planned: b.avg_planned_rr,
+    actual: b.avg_actual_r,
+    shortfall: b.avg_shortfall,
+    n: b.n,
+    lowSample: b.n < MIN_SIGNAL_N,
+  }));
+
+  const trendSignal = report.trend_signal;
+  const trendColor = trendSignal ? (TREND_COLORS[trendSignal as keyof typeof TREND_COLORS] ?? "text-gray-400") : null;
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500 uppercase tracking-wider">R:R Realization Trend (weekly)</p>
+        <div className="flex items-center gap-3 text-xs">
+          {trendSignal && trendColor && (
+            <span className={`font-medium ${trendColor}`}>
+              {trendSignal === "improving" ? "↑ Improving" : trendSignal === "worsening" ? "↓ Worsening" : "→ Stable"}
+            </span>
+          )}
+          <span className="text-gray-600">{report.total_qualifying} qualifying trade{report.total_qualifying !== 1 ? "s" : ""}</span>
+        </div>
+      </div>
+
+      <ResponsiveContainer width="100%" height={150}>
+        <ComposedChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#6b7280" }} />
+          <YAxis
+            tick={{ fontSize: 10, fill: "#6b7280" }}
+            domain={[0, 120]}
+            tickFormatter={(v: number) => `${v}%`}
+            width={36}
+          />
+          <ReferenceLine y={100} stroke="#6b7280" strokeDasharray="4 2" label={{ value: "100%", position: "right", fontSize: 9, fill: "#6b7280" }} />
+          <Tooltip
+            contentStyle={{ background: "#111827", border: "1px solid #374151", fontSize: 11 }}
+            formatter={(value: number, name: string) => {
+              if (name === "pct") return [`${value?.toFixed(0)}%`, "Realization"];
+              return [value, name];
+            }}
+            labelFormatter={(label: string, payload) => {
+              if (payload && payload[0]) {
+                const d = payload[0].payload;
+                return `${label}  (n=${d.n}${d.lowSample ? "*" : ""})\nPlanned: ${d.planned?.toFixed(2)}R → Realized: ${d.actual > 0 ? "+" : ""}${d.actual?.toFixed(2)}R`;
+              }
+              return label;
+            }}
+          />
+          <Bar dataKey="pct" name="pct" radius={[2, 2, 0, 0]}>
+            {data.map((d, i) => (
+              <Cell key={i} fill={rrTrendBarColor(d.pct)} fillOpacity={d.lowSample ? 0.45 : 0.85} />
+            ))}
+          </Bar>
+        </ComposedChart>
+      </ResponsiveContainer>
+
+      <div className="flex items-center gap-4 text-xs text-gray-600">
+        <span><span className="inline-block w-2 h-2 rounded-sm bg-green-400 mr-1" />≥ 90%</span>
+        <span><span className="inline-block w-2 h-2 rounded-sm bg-yellow-400 mr-1" />60–89%</span>
+        <span><span className="inline-block w-2 h-2 rounded-sm bg-red-400 mr-1" />&lt; 60%</span>
+        {data.some((d) => d.lowSample) && <span className="ml-1 italic">faded bars = &lt; 3 trades</span>}
+      </div>
+    </div>
+  );
+}
+
 // ── Date helpers ───────────────────────────────────────────────────────────────
 
 function todayISO() {
@@ -667,6 +763,14 @@ export default function DashboardPage() {
   const { data: planAdherence } = useSWR(
     accountId ? `plan-adherence-${accountId}-${fromDate}-${toDate}` : null,
     () => api.getPlanAdherence(accountId, {
+      from_date: fromDate || undefined,
+      to_date: toDate || undefined,
+    })
+  );
+
+  const { data: rrTrend } = useSWR(
+    accountId ? `rr-trend-${accountId}-${fromDate}-${toDate}` : null,
+    () => api.getRRTrend(accountId, {
       from_date: fromDate || undefined,
       to_date: toDate || undefined,
     })
@@ -883,6 +987,14 @@ export default function DashboardPage() {
               <RRComparisonPanel rr={planAdherence.rr_comparison} />
             )}
           </div>
+        </section>
+      )}
+
+      {/* ── R:R Realization Trend ─────────────────────────────────────────────── */}
+      {rrTrend && rrTrend.buckets.length > 0 && (
+        <section>
+          <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Execution Trend</h2>
+          <RRTrendChart report={rrTrend} />
         </section>
       )}
     </div>

@@ -6,7 +6,7 @@ from typing import Callable, Dict, List, Optional
 from src.main.python.core.metrics_calculator import MetricsCalculator
 from src.main.python.core.performance_summary import (
     AccountReport, PerformanceSummary, PlanAdherenceGroup, PlanAdherenceReport,
-    RRComparisonReport,
+    RRComparisonReport, RRTrendBucket, RRTrendReport,
 )
 from src.main.python.models.account import Account
 from src.main.python.models.enums import TradeResult
@@ -623,5 +623,85 @@ class AccountAnalytics:
                     f"{deviated.count} trades were marked as plan deviations, "
                     f"costing ${d_cost:.2f} total."
                 )
+
+    # ── R:R realization trend ─────────────────────────────────────────────────
+
+    @staticmethod
+    def compute_rr_trend(trades: List[Trade]) -> RRTrendReport:
+        """
+        Bucket qualifying trades by ISO week and compute R:R realization per bucket.
+
+        Inclusion criteria (same as compute_rr_analysis):
+          - trade.trade_plan_id is not None
+          - trade.planned_rr is not None and > 0
+          - trade.actual_r_multiple is not None
+          - trade.exit_datetime is not None
+
+        Buckets with 0 qualifying trades are omitted.
+        Trend signal compares first vs second half of non-empty buckets (>= 4 required).
+        """
+        from collections import defaultdict
+
+        qualifying = [
+            t for t in trades
+            if t.trade_plan_id is not None
+            and t.planned_rr is not None
+            and t.planned_rr > 0
+            and t.actual_r_multiple is not None
+            and t.exit_datetime is not None
+        ]
+
+        if not qualifying:
+            return RRTrendReport(buckets=[], total_qualifying=0, trend_signal=None)
+
+        groups: Dict[str, List[Trade]] = defaultdict(list)
+        for t in qualifying:
+            year, week, _ = t.exit_datetime.isocalendar()
+            groups[f"{year}-W{week:02d}"].append(t)
+
+        def _week_start(key: str) -> datetime:
+            year, w = int(key[:4]), int(key[6:])
+            jan4 = datetime(year, 1, 4)
+            return jan4 - timedelta(days=jan4.weekday()) + timedelta(weeks=w - 1)
+
+        buckets = []
+        for key in sorted(groups):
+            group = groups[key]
+            n = len(group)
+            avg_planned = round(sum(t.planned_rr for t in group) / n, 2)  # type: ignore[arg-type]
+            avg_actual = round(sum(t.actual_r_multiple for t in group) / n, 2)  # type: ignore[arg-type]
+            shortfall = round(avg_actual - avg_planned, 2)
+            realization_pct = (
+                round((avg_actual / avg_planned) * 100, 1) if avg_planned != 0 else None
+            )
+            buckets.append(RRTrendBucket(
+                bucket=key,
+                bucket_start=_week_start(key),
+                n=n,
+                avg_planned_rr=avg_planned,
+                avg_actual_r=avg_actual,
+                avg_shortfall=shortfall,
+                realization_pct=realization_pct,
+            ))
+
+        trend_signal: Optional[str] = None
+        valid = [b for b in buckets if b.realization_pct is not None]
+        if len(valid) >= 4:
+            mid = len(valid) // 2
+            first_avg = sum(b.realization_pct for b in valid[:mid]) / mid  # type: ignore[arg-type]
+            second_avg = sum(b.realization_pct for b in valid[mid:]) / (len(valid) - mid)  # type: ignore[arg-type]
+            diff = second_avg - first_avg
+            if diff >= 5:
+                trend_signal = "improving"
+            elif diff <= -5:
+                trend_signal = "worsening"
+            else:
+                trend_signal = "stable"
+
+        return RRTrendReport(
+            buckets=buckets,
+            total_qualifying=len(qualifying),
+            trend_signal=trend_signal,
+        )
 
         return signals

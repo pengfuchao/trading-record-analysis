@@ -434,6 +434,27 @@ def plan_adherence_to_response(r: PlanAdherenceReport) -> PlanAdherenceResponse:
 
 # ── Import history ─────────────────────────────────────────────────────────────
 
+# ── R:R realization trend ─────────────────────────────────────────────────────
+
+class RRTrendBucketResponse(BaseModel):
+    """One ISO-week bucket in the R:R realization trend series."""
+    bucket: str                      # "2026-W15"
+    bucket_start: datetime
+    n: int
+    avg_planned_rr: float
+    avg_actual_r: float
+    avg_shortfall: float
+    realization_pct: Optional[float]
+
+
+class RRTrendReportResponse(BaseModel):
+    buckets: List[RRTrendBucketResponse]
+    total_qualifying: int
+    trend_signal: Optional[str]      # "improving" | "worsening" | "stable" | None
+
+
+# ── Import history ─────────────────────────────────────────────────────────────
+
 class ImportHistoryEntry(BaseModel):
     """One import batch summary."""
     import_run_id: str
