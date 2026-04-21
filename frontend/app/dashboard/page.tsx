@@ -997,6 +997,13 @@ export default function DashboardPage() {
           <RRTrendChart report={rrTrend} />
         </section>
       )}
+      {rrTrend && rrTrend.buckets.length === 0 && (
+        <p className="text-xs text-gray-600 px-1">
+          R:R Realization Trend appears when trades have a linked plan with{" "}
+          <span className="font-mono">planned_rr &gt; 0</span> and{" "}
+          <span className="font-mono">actual_r_multiple</span> set.
+        </p>
+      )}
     </div>
   );
 }

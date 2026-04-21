@@ -623,6 +623,7 @@ class AccountAnalytics:
                     f"{deviated.count} trades were marked as plan deviations, "
                     f"costing ${d_cost:.2f} total."
                 )
+        return signals
 
     # ── R:R realization trend ─────────────────────────────────────────────────
 
