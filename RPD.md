@@ -1,9 +1,9 @@
 # Product Requirements Document
 ## Trading Record Analysis — MVP+ State and Future Roadmap
 
-**Document version:** 2.0  
-**Last updated:** 2026-04-16  
-**Status:** Active development — MVP+ complete, expansion planning phase
+**Document version:** 2.1  
+**Last updated:** 2026-04-21  
+**Status:** Active development — MVP+ complete, consolidation pass done, deeper analytics next
 
 ---
 
@@ -25,18 +25,22 @@ A professional trading journal and account analytics platform for discretionary 
 
 | Module | Feature | State |
 |---|---|---|
-| Accounts | Create, select, edit (broker, balance, platform, prop firm, phase) | Complete |
+| Accounts | Create, select, edit, delete (broker, balance, platform, prop firm, phase) | Complete |
 | Import | MT4 + MT5 CSV multi-format parsing, preview, dedup strategies, recompute R/session | Complete |
-| Trade Log | Filterable list (symbol, result, date range) | Complete |
+| Trade Log | Server-side pagination, filterable list (symbol, result, date range) | Complete |
 | Trade Detail | Full execution data, journal enrichment (flags, tags, reflection), inline edit | Complete |
-| Trade Plans | CRUD + manual link to executed trades | Complete |
+| Trade Plans | CRUD + manual link to executed trades + setup type dropdown from Setup Library | Complete |
+| Setup Library | Global setup definitions CRUD (backend + frontend), setup type autocomplete in trade edit + trade plans | Complete — screenshot upload deferred |
 | Dashboard | Equity curve, drawdown chart, core analytics (win rate, PF, expectancy, R, drawdown, Sharpe, Sortino, streaks) | Complete |
 | FTMO Panel | Daily loss used vs limit, overall drawdown vs limit, status badges, progress bars, 1-min auto-refresh | Complete |
 | Daily Plans | Pre-market plan CRUD (bias, symbols, setups, rules) | Complete |
 | Daily Reviews | Post-market review CRUD (PnL, mistakes, emotional summary, reflection) | Complete |
 | Mistake Analysis | Mistake frequency/cost ranking on dashboard | Complete |
-| Setup Library | Setup definitions CRUD (backend + frontend create/edit/delete), setup type autocomplete on trade edit form | Complete |
+| Plan-vs-Execution | Planned/unplanned + followed/deviated comparison, planned R:R vs realized R, coaching signals, dashboard panels | Complete |
+| Setup Analytics | Per-setup win rate, avg PnL, profit factor, ranking | Complete |
 | AI Coaching | Weekly review via Anthropic Claude API, rule-based fallback, review history | Complete |
+| MT5 Sync | Config UI, manual trigger, run history, open positions, partial close reconstruction, background polling | Complete |
+| Telegram | Push notifications (sync, FTMO, coaching) + structured write-in (/plan, /journal, /status, /ping) | Complete |
 
 ### 2.2 Tech Stack
 
@@ -61,12 +65,11 @@ These are small improvements suitable for the current development phase:
 
 | Item | Priority | Notes |
 |---|---|---|
-| Trade log pagination | **DONE** | Server-side page/page_size (default 50, max 500). `TradeListResponse` with items/total/page/total_pages. Frontend Prev/Next controls; filter changes reset to page 1. Analytics/coaching routes use page_size=10_000 to remain unaffected. |
-| Per-symbol / per-session analytics tabs | Medium | Dashboard shows account-level only. Segmented analytics by symbol/session would improve coaching signal. |
-| Chart screenshot upload | Low | No image attachment today. Would require file storage (Supabase Storage / S3). |
+| Per-symbol / per-session analytics tabs | Medium | Dashboard shows account-level only. Segmented analytics by symbol/session would improve coaching signal quality. |
+| Chart screenshot upload | Low | `screenshot_examples` field exists in schema. Requires file storage (Supabase Storage / S3). |
 | Setup library auto-suggestions from import | Low | New setup names from CSV don't auto-populate the library; trader must add them manually. |
-| `broker_utc_offset` UI configuration | Low | Currently a hidden parameter on FTMO endpoint. Surfacing it would improve daily loss calculation accuracy for non-UTC brokers. |
-| Manual trade entry form | Low | Currently trades come from CSV only. A create-trade form would support manually recording trades not from MT4/MT5. |
+| `broker_utc_offset` UI configuration | Low | Currently per-MT5-config. Surfacing it more prominently would help session classification accuracy for non-UTC brokers. |
+| Manual trade entry form | Low | Trades currently come from CSV import or MT5 sync only. |
 
 ---
 
@@ -254,11 +257,11 @@ Strict key:value command intake via Telegram webhook. No natural-language parsin
 - Negative-R trades are always included (diagnostically important)
 
 **Deferred (follow-up phases):**
-- Per-setup planned vs realized R breakdown (small n problem until more data)
-- Trend over time (R:R realization improving / worsening)
+- Per-setup planned vs realized R breakdown (small n problem until more data — priority next)
+- R:R realization trend over time (improving / worsening)
 - Target-hit vs stop-hit decomposition (requires entry quality tagging)
 - Entry quality vs exit quality decomposition
-- Daily plan `allowed_setups` vs actual setups taken
+- Daily plan `allowed_setups` vs actual setups taken enforcement
 
 ---
 
@@ -352,6 +355,21 @@ Expansion Phase 5 (DONE 2026-04-21)
         - setup_id auto-generated as kebab slug from name (editable before save)
         - existing setup stats/analytics display fully preserved
         - Deferred: screenshot_examples (no image upload infrastructure in v1)
+
+Expansion Phase 5b (DONE 2026-04-21)
+  └── Setup Library integration into Trade Plans create/edit
+        - SetupTypeSelect shared component (frontend/components/SetupTypeSelect.tsx)
+        - dropdown populated from GET /setups (same SWR key "setups" — shared cache)
+        - stores setup.name as setup_type string (analytics unaffected)
+        - "Custom…" fallback preserves free-text entry
+        - old plans with free-text values render correctly in the dropdown
+
+Consolidation pass (DONE 2026-04-21)
+  └── Full project audit: inventory, stability review, doc sync, QA baseline
+        - README rewritten to match actual feature state
+        - RPD updated to v2.1 with all completed phases
+        - Known limitations and risk notes updated
+        - Manual regression checklist added to README
 
 Later
   └── MT4 EA bridge

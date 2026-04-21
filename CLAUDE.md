@@ -108,9 +108,15 @@ Next.js App Router (`frontend/app/`). Components in `frontend/components/`. Shar
 
 `services/mt5_sync_service.py` → `services/mt5_connector.py`. MT5 password never stored in DB — read from env var `MT5_<ACCOUNT_ID_UPPER_UNDERSCORED>_PASSWORD` at request time. Windows-only; degrades gracefully on Linux/Mac.
 
+**Background polling:** `services/mt5_scheduler.py` — `MT5PollingScheduler` singleton (APScheduler). Started/stopped via a FastAPI lifespan context manager in `api/app.py`. One `IntervalJob` per enabled account. Overlap protection is in-memory only (`_running` set) — safe for single-process, not multi-worker deployments.
+
 ### Telegram
 
-Phase 1 (notifications): `services/telegram_notifier.py` — `TelegramNotifier` singleton. Three notification methods: `notify_mt5_sync_result()`, `check_and_notify_ftmo()` (state-change dedup via in-memory `_last_ftmo_status` dict), `notify_coaching_generated()`. All fire-and-forget. Phase 2 (structured write-in): `api/routes/telegram.py` — webhook/command handler.
+Push notifications: `services/telegram_notifier.py` — `TelegramNotifier` singleton. Methods: `notify_mt5_sync_result()`, `check_and_notify_ftmo()` (state-change dedup via in-memory `_last_ftmo_status` dict), `notify_coaching_generated()`. All fire-and-forget. Structured write-in: `api/routes/telegram.py` — webhook/command handler with chat_id guard.
+
+### Setup Library
+
+`SetupDefinition` is **globally scoped** (not per-account). The `GET /setups` endpoint is not under `/accounts/{id}/`. Analytics (`GET /accounts/{id}/setups`) is account-scoped and groups by `trade.setup_type` string. The `SetupTypeSelect` frontend component (`frontend/components/SetupTypeSelect.tsx`) is shared across trade edit and trade plan forms — it stores `setup.name` as the `setup_type` string so analytics keying is unaffected.
 
 ### Testing
 
