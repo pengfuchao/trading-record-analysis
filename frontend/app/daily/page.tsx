@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { api, DailyAdherenceResponse, DailyPlan, DailyReview } from "@/lib/api";
+import { api, DailyAdherenceResponse, DailyPlan, DailyReview, SetupDefinition } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
+import { SetupMultiSelect } from "@/components/SetupMultiSelect";
 import { fmtDate, fmtPnl, pnlColor } from "@/lib/utils";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -117,7 +118,7 @@ function AdherencePanel({ adh }: { adh: DailyAdherenceResponse }) {
 
 // ── Plan card ─────────────────────────────────────────────────────────────────
 
-function PlanCard({ plan, accountId }: { plan: DailyPlan; accountId: string }) {
+function PlanCard({ plan, accountId, setupNames }: { plan: DailyPlan; accountId: string; setupNames: string[] }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -136,8 +137,8 @@ function PlanCard({ plan, accountId }: { plan: DailyPlan; accountId: string }) {
     symbols_in_focus: plan.symbols_in_focus.join(", "),
     key_levels: plan.key_levels ?? "",
     major_news: plan.major_news ?? "",
-    allowed_setups: plan.allowed_setups.join(", "),
-    disallowed_setups: plan.disallowed_setups.join(", "),
+    allowed_setups: [...plan.allowed_setups],
+    disallowed_setups: [...plan.disallowed_setups],
     daily_max_risk_pct: plan.daily_max_risk_pct != null ? String(plan.daily_max_risk_pct) : "",
     max_trades: plan.max_trades != null ? String(plan.max_trades) : "",
     behavioral_focus: plan.behavioral_focus ?? "",
@@ -162,12 +163,8 @@ function PlanCard({ plan, accountId }: { plan: DailyPlan; accountId: string }) {
           : [],
         key_levels: form.key_levels || undefined,
         major_news: form.major_news || undefined,
-        allowed_setups: form.allowed_setups
-          ? form.allowed_setups.split(",").map((s) => s.trim()).filter(Boolean)
-          : [],
-        disallowed_setups: form.disallowed_setups
-          ? form.disallowed_setups.split(",").map((s) => s.trim()).filter(Boolean)
-          : [],
+        allowed_setups: form.allowed_setups,
+        disallowed_setups: form.disallowed_setups,
         daily_max_risk_pct: form.daily_max_risk_pct ? parseFloat(form.daily_max_risk_pct) : undefined,
         max_trades: form.max_trades ? parseInt(form.max_trades) : undefined,
         behavioral_focus: form.behavioral_focus || undefined,
@@ -251,20 +248,20 @@ function PlanCard({ plan, accountId }: { plan: DailyPlan; accountId: string }) {
                 className={inputCls}
               />
             </div>
-            <div>
-              <label className={labelCls}>Allowed Setups (comma-separated)</label>
-              <input
+            <div className="sm:col-span-2">
+              <SetupMultiSelect
+                label="Allowed Setups"
                 value={form.allowed_setups}
-                onChange={set("allowed_setups")}
-                className={inputCls}
+                onChange={(v) => setForm((f) => ({ ...f, allowed_setups: v }))}
+                setupNames={setupNames}
               />
             </div>
-            <div>
-              <label className={labelCls}>Disallowed Setups (comma-separated)</label>
-              <input
+            <div className="sm:col-span-2">
+              <SetupMultiSelect
+                label="Disallowed Setups"
                 value={form.disallowed_setups}
-                onChange={set("disallowed_setups")}
-                className={inputCls}
+                onChange={(v) => setForm((f) => ({ ...f, disallowed_setups: v }))}
+                setupNames={setupNames}
               />
             </div>
           </div>
@@ -697,15 +694,15 @@ function ReviewCard({ review, accountId }: { review: DailyReview; accountId: str
 
 // ── New Plan form ─────────────────────────────────────────────────────────────
 
-function NewPlanForm({ accountId, onDone }: { accountId: string; onDone: () => void }) {
+function NewPlanForm({ accountId, onDone, setupNames }: { accountId: string; onDone: () => void; setupNames: string[] }) {
   const [form, setForm] = useState({
     trading_date: today(),
     market_bias: "",
     symbols_in_focus: "",
     key_levels: "",
     major_news: "",
-    allowed_setups: "",
-    disallowed_setups: "",
+    allowed_setups: [] as string[],
+    disallowed_setups: [] as string[],
     daily_max_risk_pct: "",
     max_trades: "",
     behavioral_focus: "",
@@ -730,12 +727,8 @@ function NewPlanForm({ accountId, onDone }: { accountId: string; onDone: () => v
           : [],
         key_levels: form.key_levels || undefined,
         major_news: form.major_news || undefined,
-        allowed_setups: form.allowed_setups
-          ? form.allowed_setups.split(",").map((s) => s.trim()).filter(Boolean)
-          : [],
-        disallowed_setups: form.disallowed_setups
-          ? form.disallowed_setups.split(",").map((s) => s.trim()).filter(Boolean)
-          : [],
+        allowed_setups: form.allowed_setups,
+        disallowed_setups: form.disallowed_setups,
         daily_max_risk_pct: form.daily_max_risk_pct ? parseFloat(form.daily_max_risk_pct) : undefined,
         max_trades: form.max_trades ? parseInt(form.max_trades) : undefined,
         behavioral_focus: form.behavioral_focus || undefined,
@@ -774,13 +767,21 @@ function NewPlanForm({ accountId, onDone }: { accountId: string; onDone: () => v
           <label className={labelCls}>Max Trades</label>
           <input type="number" placeholder="3" value={form.max_trades} onChange={set("max_trades")} className={inputCls} />
         </div>
-        <div>
-          <label className={labelCls}>Allowed Setups (comma-separated)</label>
-          <input value={form.allowed_setups} onChange={set("allowed_setups")} className={inputCls} />
+        <div className="sm:col-span-2">
+          <SetupMultiSelect
+            label="Allowed Setups"
+            value={form.allowed_setups}
+            onChange={(v) => setForm((f) => ({ ...f, allowed_setups: v }))}
+            setupNames={setupNames}
+          />
         </div>
-        <div>
-          <label className={labelCls}>Disallowed Setups (comma-separated)</label>
-          <input value={form.disallowed_setups} onChange={set("disallowed_setups")} className={inputCls} />
+        <div className="sm:col-span-2">
+          <SetupMultiSelect
+            label="Disallowed Setups"
+            value={form.disallowed_setups}
+            onChange={(v) => setForm((f) => ({ ...f, disallowed_setups: v }))}
+            setupNames={setupNames}
+          />
         </div>
       </div>
       <div>
@@ -951,6 +952,8 @@ export default function DailyPage() {
     accountId ? `reviews-${accountId}` : null,
     () => api.listReviews(accountId!)
   );
+  const { data: setupDefs = [] } = useSWR<SetupDefinition[]>("setups", () => api.listSetups());
+  const setupNames = setupDefs.map((s) => s.name);
 
   return (
     <div className="space-y-4">
@@ -987,14 +990,14 @@ export default function DailyPage() {
             </button>
           </div>
           {showNewPlan && accountId && (
-            <NewPlanForm accountId={accountId} onDone={() => setShowNewPlan(false)} />
+            <NewPlanForm accountId={accountId} onDone={() => setShowNewPlan(false)} setupNames={setupNames} />
           )}
           {plansLoading && <p className="text-gray-500 text-sm">Loading…</p>}
           {!plansLoading && plans.length === 0 && !showNewPlan && (
             <p className="text-gray-500 text-sm">No pre-market plans yet.</p>
           )}
           {accountId && plans.map((p) => (
-            <PlanCard key={p.plan_id} plan={p} accountId={accountId} />
+            <PlanCard key={p.plan_id} plan={p} accountId={accountId} setupNames={setupNames} />
           ))}
         </div>
       )}
