@@ -172,6 +172,30 @@ class RRTrendReport:
 
 
 @dataclass
+class BehavioralTrendBucket:
+    """One ISO week in the behavioral discipline trend series."""
+    bucket: str                          # "2026-W15"
+    bucket_start: datetime               # Monday 00:00 of that ISO week (UTC-naive)
+    n: int                               # total trades with exit_datetime in this bucket
+    win_rate: Optional[float]            # wins / n (0.0–1.0); None if n=0
+    mistake_rate: Optional[float]        # trades_with_any_mistake / n (0.0–1.0); None if n=0
+    plan_link_rate: Optional[float]      # trades_with_trade_plan_id / n (0.0–1.0); None if n=0
+    followed_plan_rate: Optional[float]  # followed_plan=True / (fp is not None); None if tagged < 3
+
+
+@dataclass
+class BehavioralTrendReport:
+    """Weekly behavioral discipline trend for an account."""
+    buckets: List[BehavioralTrendBucket] = field(default_factory=list)
+    total_trades: int = 0
+    # Per-metric trend: "improving" | "worsening" | "stable" | None (needs >= 4 non-empty buckets)
+    win_rate_trend: Optional[str] = None
+    mistake_rate_trend: Optional[str] = None
+    plan_link_rate_trend: Optional[str] = None
+    followed_plan_rate_trend: Optional[str] = None
+
+
+@dataclass
 class ExitBucket:
     """Statistics for one exit outcome category."""
     count: int

@@ -150,6 +150,15 @@ export const api = {
     return request<RRTrendReportResponse>(`/accounts/${accountId}/rr-trend${qs ? `?${qs}` : ""}`);
   },
 
+  // Behavioral trend
+  getBehavioralTrend: (accountId: string, params?: DateRange) => {
+    const q = new URLSearchParams();
+    if (params?.from_date) q.set("from_date", params.from_date);
+    if (params?.to_date) q.set("to_date", endOfDay(params.to_date)!);
+    const qs = q.toString();
+    return request<BehavioralTrendReportResponse>(`/accounts/${accountId}/behavioral-trend${qs ? `?${qs}` : ""}`);
+  },
+
   // Daily Plans
   listPlans: (accountId: string, params?: DateRange) => {
     const q = new URLSearchParams();
@@ -589,6 +598,25 @@ export interface RRTrendReportResponse {
   buckets: RRTrendBucket[];
   total_qualifying: number;
   trend_signal: string | null;  // "improving" | "worsening" | "stable" | null
+}
+
+export interface BehavioralTrendBucket {
+  bucket: string;           // "2026-W15"
+  bucket_start: string;
+  n: number;
+  win_rate: number | null;
+  mistake_rate: number | null;
+  plan_link_rate: number | null;
+  followed_plan_rate: number | null;
+}
+
+export interface BehavioralTrendReportResponse {
+  buckets: BehavioralTrendBucket[];
+  total_trades: number;
+  win_rate_trend: string | null;
+  mistake_rate_trend: string | null;
+  plan_link_rate_trend: string | null;
+  followed_plan_rate_trend: string | null;
 }
 
 export interface SegmentRow {

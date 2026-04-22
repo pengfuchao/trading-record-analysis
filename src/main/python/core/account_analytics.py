@@ -5,10 +5,10 @@ from typing import Callable, Dict, List, Optional
 
 from src.main.python.core.metrics_calculator import MetricsCalculator
 from src.main.python.core.performance_summary import (
-    AccountReport, DailyAdherenceReport, EntryExitQualityReport, ExitBucket,
-    ExitDecompositionReport, PerformanceSummary, PlanAdherenceGroup,
-    PlanAdherenceReport, RRComparisonReport, RRTrendBucket, RRTrendReport,
-    SetupViolation,
+    AccountReport, BehavioralTrendBucket, BehavioralTrendReport, DailyAdherenceReport,
+    EntryExitQualityReport, ExitBucket, ExitDecompositionReport, PerformanceSummary,
+    PlanAdherenceGroup, PlanAdherenceReport, RRComparisonReport, RRTrendBucket,
+    RRTrendReport, SetupViolation,
 )
 from src.main.python.models.account import Account
 from src.main.python.models.enums import TradeResult
@@ -705,6 +705,128 @@ class AccountAnalytics:
             buckets=buckets,
             total_qualifying=len(qualifying),
             trend_signal=trend_signal,
+        )
+
+    # ── Behavioral trend (weekly series) ──────────────────────────────────────
+
+    @staticmethod
+    def _has_any_mistake(trade: Trade) -> bool:
+        """Return True if the trade has at least one recorded mistake."""
+        boolean_flags = (
+            "early_entry", "chasing", "fomo", "emotional_trade", "revenge_trade",
+            "overtrading", "hesitation", "moved_stop", "premature_exit", "held_loser_too_long",
+        )
+        if any(getattr(trade, flag, None) is True for flag in boolean_flags):
+            return True
+        if trade.mistake_tags and any(t.strip() for t in trade.mistake_tags):
+            return True
+        return False
+
+    @staticmethod
+    def _trend_signal(values: List[Optional[float]], higher_is_better: bool) -> Optional[str]:
+        """
+        Compare first-half vs second-half averages of a series.
+        Returns "improving" | "worsening" | "stable" | None (< 4 non-None values).
+        Threshold: >= 5 percentage-point change (values assumed 0–1 scale → multiply by 100).
+        """
+        non_none = [v for v in values if v is not None]
+        if len(non_none) < 4:
+            return None
+        mid = len(non_none) // 2
+        first_avg = sum(non_none[:mid]) / mid * 100
+        second_avg = sum(non_none[mid:]) / (len(non_none) - mid) * 100
+        diff = second_avg - first_avg
+        if higher_is_better:
+            if diff >= 5:
+                return "improving"
+            elif diff <= -5:
+                return "worsening"
+            return "stable"
+        else:
+            if diff <= -5:
+                return "improving"
+            elif diff >= 5:
+                return "worsening"
+            return "stable"
+
+    @staticmethod
+    def compute_behavioral_trend(trades: List[Trade]) -> BehavioralTrendReport:
+        """
+        Bucket all trades with exit_datetime by ISO week and compute four
+        behavioral discipline metrics per bucket:
+
+          win_rate            = wins / n                    (higher is better)
+          mistake_rate        = trades_with_mistake / n     (lower is better)
+          plan_link_rate      = trades_with_plan_id / n     (higher is better)
+          followed_plan_rate  = followed=True / tagged      (higher is better;
+                                None if tagged < 3)
+
+        Trend signal per metric: "improving" | "worsening" | "stable" | None
+        (None when fewer than 4 non-empty buckets exist for that metric).
+        """
+        from collections import defaultdict
+
+        dated = [t for t in trades if t.exit_datetime is not None]
+        if not dated:
+            return BehavioralTrendReport()
+
+        groups: Dict[str, List[Trade]] = defaultdict(list)
+        for t in dated:
+            year, week, _ = t.exit_datetime.isocalendar()
+            groups[f"{year}-W{week:02d}"].append(t)
+
+        def _week_start(key: str) -> datetime:
+            year, w = int(key[:4]), int(key[6:])
+            jan4 = datetime(year, 1, 4)
+            return jan4 - timedelta(days=jan4.weekday()) + timedelta(weeks=w - 1)
+
+        MIN_FP_TAGGED = 3  # min trades with followed_plan set to compute followed_plan_rate
+
+        buckets: List[BehavioralTrendBucket] = []
+        for key in sorted(groups):
+            group = groups[key]
+            n = len(group)
+
+            wins = sum(1 for t in group if t.result == TradeResult.WIN)
+            win_rate = round(wins / n, 4) if n else None
+
+            mistakes = sum(1 for t in group if AccountAnalytics._has_any_mistake(t))
+            mistake_rate = round(mistakes / n, 4) if n else None
+
+            linked = sum(1 for t in group if t.trade_plan_id is not None)
+            plan_link_rate = round(linked / n, 4) if n else None
+
+            tagged = [t for t in group if t.followed_plan is not None]
+            followed_plan_rate: Optional[float] = None
+            if len(tagged) >= MIN_FP_TAGGED:
+                followed = sum(1 for t in tagged if t.followed_plan is True)
+                followed_plan_rate = round(followed / len(tagged), 4)
+
+            buckets.append(BehavioralTrendBucket(
+                bucket=key,
+                bucket_start=_week_start(key),
+                n=n,
+                win_rate=win_rate,
+                mistake_rate=mistake_rate,
+                plan_link_rate=plan_link_rate,
+                followed_plan_rate=followed_plan_rate,
+            ))
+
+        return BehavioralTrendReport(
+            buckets=buckets,
+            total_trades=len(dated),
+            win_rate_trend=AccountAnalytics._trend_signal(
+                [b.win_rate for b in buckets], higher_is_better=True
+            ),
+            mistake_rate_trend=AccountAnalytics._trend_signal(
+                [b.mistake_rate for b in buckets], higher_is_better=False
+            ),
+            plan_link_rate_trend=AccountAnalytics._trend_signal(
+                [b.plan_link_rate for b in buckets], higher_is_better=True
+            ),
+            followed_plan_rate_trend=AccountAnalytics._trend_signal(
+                [b.followed_plan_rate for b in buckets], higher_is_better=True
+            ),
         )
 
     # ── Exit outcome decomposition ─────────────────────────────────────────────

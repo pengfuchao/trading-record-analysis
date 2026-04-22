@@ -6,7 +6,7 @@ import {
   AreaChart, Area, LineChart, Line, ComposedChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { api, Account, EntryExitQualityResponse, ExitBucket, ExitDecompositionResponse, FtmoStatus, MT5SyncStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse, RRTrendBucket, RRTrendReportResponse, SegmentRow, SegmentAnalyticsResponse } from "@/lib/api";
+import { api, Account, BehavioralTrendReportResponse, EntryExitQualityResponse, ExitBucket, ExitDecompositionResponse, FtmoStatus, MT5SyncStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse, RRTrendBucket, RRTrendReportResponse, SegmentRow, SegmentAnalyticsResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import StatCard from "@/components/StatCard";
@@ -606,6 +606,84 @@ function PlanAdherencePanel({ data }: { data: PlanAdherenceResponse }) {
   );
 }
 
+// ── Behavioral Trend chart ────────────────────────────────────────────────────
+
+function BehavioralTrendChart({ report }: { report: BehavioralTrendReportResponse }) {
+  if (report.buckets.length === 0) return null;
+
+  const data = report.buckets.map((b) => ({
+    label: fmtWeek(b.bucket),
+    n: b.n,
+    win_rate: b.win_rate != null ? Math.round(b.win_rate * 100) : null,
+    mistake_rate: b.mistake_rate != null ? Math.round(b.mistake_rate * 100) : null,
+    followed_plan_rate: b.followed_plan_rate != null ? Math.round(b.followed_plan_rate * 100) : null,
+    plan_link_rate: b.plan_link_rate != null ? Math.round(b.plan_link_rate * 100) : null,
+  }));
+
+  const trendBadge = (signal: string | null, label: string) => {
+    if (!signal) return null;
+    const color = signal === "improving" ? "text-green-400" : signal === "worsening" ? "text-red-400" : "text-yellow-400";
+    const arrow = signal === "improving" ? "↑" : signal === "worsening" ? "↓" : "→";
+    return (
+      <span key={label} className={`text-xs ${color}`}>{arrow} {label}</span>
+    );
+  };
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-xs text-gray-500 uppercase tracking-wider">Behavioral Trend (weekly)</p>
+        <div className="flex items-center gap-3 flex-wrap">
+          {trendBadge(report.win_rate_trend, "Win Rate")}
+          {trendBadge(report.mistake_rate_trend, "Mistake Rate")}
+          {trendBadge(report.followed_plan_rate_trend, "Plan Follow")}
+          <span className="text-xs text-gray-600">{report.total_trades} trades</span>
+        </div>
+      </div>
+
+      <ResponsiveContainer width="100%" height={160}>
+        <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#6b7280" }} />
+          <YAxis
+            tick={{ fontSize: 10, fill: "#6b7280" }}
+            domain={[0, 100]}
+            tickFormatter={(v: number) => `${v}%`}
+            width={36}
+          />
+          <Tooltip
+            contentStyle={{ background: "#111827", border: "1px solid #374151", fontSize: 11 }}
+            formatter={(value: number, name: string) => {
+              const labels: Record<string, string> = {
+                win_rate: "Win Rate",
+                mistake_rate: "Mistake Rate",
+                followed_plan_rate: "Followed Plan",
+                plan_link_rate: "Plan Linked",
+              };
+              return [`${value}%`, labels[name] ?? name];
+            }}
+            labelFormatter={(label: string, payload) => {
+              const n = payload?.[0]?.payload?.n;
+              return `${label}${n != null ? `  (n=${n})` : ""}`;
+            }}
+          />
+          <Line type="monotone" dataKey="win_rate" stroke="#34d399" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+          <Line type="monotone" dataKey="mistake_rate" stroke="#f87171" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+          <Line type="monotone" dataKey="followed_plan_rate" stroke="#60a5fa" strokeWidth={2} dot={{ r: 3 }} connectNulls strokeDasharray="5 3" />
+          <Line type="monotone" dataKey="plan_link_rate" stroke="#a78bfa" strokeWidth={1.5} dot={{ r: 2 }} connectNulls strokeDasharray="3 2" />
+        </LineChart>
+      </ResponsiveContainer>
+
+      <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
+        <span><span className="inline-block w-4 h-0.5 bg-green-400 mr-1 align-middle" />Win rate</span>
+        <span><span className="inline-block w-4 h-0.5 bg-red-400 mr-1 align-middle" />Mistake rate</span>
+        <span><span className="inline-block w-4 h-0.5 bg-blue-400 mr-1 align-middle" />Followed plan</span>
+        <span><span className="inline-block w-4 h-0.5 bg-violet-400 mr-1 align-middle" />Plan linked</span>
+      </div>
+    </div>
+  );
+}
+
 // ── R:R Realization Trend chart ───────────────────────────────────────────────
 
 const TREND_COLORS = {
@@ -1102,6 +1180,14 @@ export default function DashboardPage() {
     })
   );
 
+  const { data: behavioralTrend } = useSWR(
+    accountId ? `behavioral-trend-${accountId}-${fromDate}-${toDate}` : null,
+    () => api.getBehavioralTrend(accountId, {
+      from_date: fromDate || undefined,
+      to_date: toDate || undefined,
+    })
+  );
+
   const { data: segmentData } = useSWR(
     accountId ? `segment-analytics-${accountId}-${fromDate}-${toDate}` : null,
     () => api.getSegmentAnalytics(accountId, {
@@ -1364,6 +1450,14 @@ export default function DashboardPage() {
           <span className="font-mono">planned_rr &gt; 0</span> and{" "}
           <span className="font-mono">actual_r_multiple</span> set.
         </p>
+      )}
+
+      {/* ── Behavioral Trend ─────────────────────────────────────────────────── */}
+      {behavioralTrend && behavioralTrend.buckets.length > 0 && (
+        <section>
+          <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Behavioral Trend</h2>
+          <BehavioralTrendChart report={behavioralTrend} />
+        </section>
       )}
 
       {/* ── Symbol & Session Analytics ──────────────────────────────────────── */}

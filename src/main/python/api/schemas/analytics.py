@@ -453,6 +453,30 @@ class RRTrendReportResponse(BaseModel):
     trend_signal: Optional[str]      # "improving" | "worsening" | "stable" | None
 
 
+# ── Behavioral trend (weekly series) ─────────────────────────────────────────
+
+class BehavioralTrendBucketResponse(BaseModel):
+    """One ISO-week bucket in the behavioral discipline trend series."""
+    bucket: str                          # "2026-W15"
+    bucket_start: datetime
+    n: int                               # total trades in bucket
+    win_rate: Optional[float]            # 0.0–1.0; None if n=0
+    mistake_rate: Optional[float]        # 0.0–1.0; None if n=0
+    plan_link_rate: Optional[float]      # 0.0–1.0; None if n=0
+    followed_plan_rate: Optional[float]  # 0.0–1.0; None if tagged < 3
+
+
+class BehavioralTrendReportResponse(BaseModel):
+    """Weekly behavioral discipline trend."""
+    buckets: List[BehavioralTrendBucketResponse]
+    total_trades: int
+    # Per-metric: "improving" | "worsening" | "stable" | None
+    win_rate_trend: Optional[str]
+    mistake_rate_trend: Optional[str]
+    plan_link_rate_trend: Optional[str]
+    followed_plan_rate_trend: Optional[str]
+
+
 # ── Per-symbol / per-session segment analytics ────────────────────────────────
 
 class SegmentRowResponse(BaseModel):

@@ -101,6 +101,9 @@ class CoachingContext:
     daily_outside_allowed: int = 0                   # total outside-allowed-list trade count
     daily_discipline_signals: List[str] = field(default_factory=list)
 
+    # Behavioral trend (populated when >= 4 weekly buckets exist)
+    behavioral_trend_signals: List[str] = field(default_factory=list)
+
 
 # ── Generation result ──────────────────────────────────────────────────────────
 
@@ -128,6 +131,37 @@ class ReviewResult:
             "diagnosis": self.diagnosis,
             "improvement": self.improvement,
         }
+
+
+# ── Behavioral trend signal builder ───────────────────────────────────────────
+
+def _generate_behavioral_trend_signals(report) -> List[str]:
+    """Convert a BehavioralTrendReport into human-readable coaching signal strings."""
+    if not report or not report.buckets:
+        return []
+    signals: List[str] = []
+    n = len(report.buckets)
+    signals.append(f"Weekly behavioral data spans {n} ISO-week bucket(s).")
+    if report.win_rate_trend:
+        signals.append(f"Win rate trend: {report.win_rate_trend.upper()}.")
+    if report.mistake_rate_trend:
+        signals.append(f"Mistake rate trend: {report.mistake_rate_trend.upper()}.")
+    if report.plan_link_rate_trend:
+        signals.append(f"Plan-linked trade rate trend: {report.plan_link_rate_trend.upper()}.")
+    if report.followed_plan_rate_trend:
+        signals.append(f"Followed-plan rate trend: {report.followed_plan_rate_trend.upper()}.")
+    # Highlight the most recent bucket
+    latest = report.buckets[-1]
+    parts = []
+    if latest.win_rate is not None:
+        parts.append(f"win rate {round(latest.win_rate * 100)}%")
+    if latest.mistake_rate is not None:
+        parts.append(f"mistake rate {round(latest.mistake_rate * 100)}%")
+    if latest.followed_plan_rate is not None:
+        parts.append(f"followed-plan rate {round(latest.followed_plan_rate * 100)}%")
+    if parts:
+        signals.append(f"Latest week ({latest.bucket}): {', '.join(parts)}.")
+    return signals
 
 
 # ── Main service ───────────────────────────────────────────────────────────────
@@ -348,6 +382,10 @@ class AICoachService:
                     f"Daily max trades was exceeded on {daily_max_exceeded_days} {days_word}."
                 )
 
+        # Behavioral discipline trend (weekly buckets)
+        behavioral_trend = AccountAnalytics.compute_behavioral_trend(trades)
+        behavioral_trend_signals = _generate_behavioral_trend_signals(behavioral_trend)
+
         # Entry vs exit quality
         eq_report = AccountAnalytics.compute_entry_exit_quality(trades)
         entry_exit_diagnosis: Optional[str] = None
@@ -420,6 +458,7 @@ class AICoachService:
             daily_disallowed_violations=daily_disallowed_violations,
             daily_outside_allowed=daily_outside_allowed,
             daily_discipline_signals=daily_discipline_signals,
+            behavioral_trend_signals=behavioral_trend_signals,
         )
 
     # ── AI path ────────────────────────────────────────────────────────────────
@@ -934,6 +973,12 @@ class AICoachService:
         else:
             rr_trend_block = "  not enough weekly buckets to determine trend (need >= 4)"
 
+        # ── Behavioral trend block ────────────────────────────────────────────
+        if ctx.behavioral_trend_signals:
+            behavioral_trend_block = "\n".join(f"  {s}" for s in ctx.behavioral_trend_signals)
+        else:
+            behavioral_trend_block = "  not enough weekly data to determine behavioral trends (need >= 4 weeks)"
+
         # ── Daily plan discipline block ───────────────────────────────────────
         daily_lines = []
         if ctx.daily_discipline_signals:
@@ -997,6 +1042,9 @@ PER-SETUP R:R EXECUTION:
 
 R:R REALIZATION TREND (weekly):
 {rr_trend_block}
+
+BEHAVIORAL TREND (weekly — win rate, mistake rate, plan discipline):
+{behavioral_trend_block}
 
 ENTRY vs EXIT QUALITY DIAGNOSIS:
 {entry_exit_block}

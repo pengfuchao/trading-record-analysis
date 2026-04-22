@@ -10,6 +10,8 @@ from src.main.python.api.dependencies import get_db, get_account_repo, get_trade
 from src.main.python.api.schemas.analytics import (
     AccountReportResponse,
     AnalyticsSummaryResponse,
+    BehavioralTrendBucketResponse,
+    BehavioralTrendReportResponse,
     EntryExitQualityResponse,
     ExitBucketResponse,
     ExitDecompositionResponse,
@@ -221,6 +223,52 @@ def get_rr_trend(
         ],
         total_qualifying=report.total_qualifying,
         trend_signal=report.trend_signal,
+    )
+
+
+@router.get("/{account_id}/behavioral-trend", response_model=BehavioralTrendReportResponse)
+def get_behavioral_trend(
+    account_id: str,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Weekly behavioral discipline trend: win_rate, mistake_rate, plan_link_rate,
+    followed_plan_rate — bucketed by ISO week over the filtered date range.
+
+    Each metric gets an independent trend signal ("improving" | "worsening" | "stable" | None).
+    Trend signals need >= 4 non-empty weekly buckets.
+    followed_plan_rate is None for weeks with < 3 trades that have followed_plan set.
+    """
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    require_account(account_id, account_repo)
+    trades, _ = trade_repo.get_by_account_filtered(
+        account_id,
+        from_date=from_date,
+        to_date=to_date,
+        page_size=10_000,
+    )
+    report = AccountAnalytics.compute_behavioral_trend(trades)
+    return BehavioralTrendReportResponse(
+        buckets=[
+            BehavioralTrendBucketResponse(
+                bucket=b.bucket,
+                bucket_start=b.bucket_start,
+                n=b.n,
+                win_rate=b.win_rate,
+                mistake_rate=b.mistake_rate,
+                plan_link_rate=b.plan_link_rate,
+                followed_plan_rate=b.followed_plan_rate,
+            )
+            for b in report.buckets
+        ],
+        total_trades=report.total_trades,
+        win_rate_trend=report.win_rate_trend,
+        mistake_rate_trend=report.mistake_rate_trend,
+        plan_link_rate_trend=report.plan_link_rate_trend,
+        followed_plan_rate_trend=report.followed_plan_rate_trend,
     )
 
 
