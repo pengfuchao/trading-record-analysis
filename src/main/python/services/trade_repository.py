@@ -242,6 +242,37 @@ class TradeRepository:
         )
         return self._session.execute(stmt).scalar_one()
 
+    def get_unlinked_by_account(self, account_id: str, limit: int = 200) -> List[Trade]:
+        """Return trades with no linked plan, ordered by entry_datetime descending."""
+        stmt = (
+            select(TradeModel)
+            .where(
+                TradeModel.account_id == account_id,
+                TradeModel.trade_plan_id.is_(None),
+            )
+            .order_by(TradeModel.entry_datetime.desc().nulls_last())
+            .limit(limit)
+        )
+        rows = self._session.execute(stmt).scalars().all()
+        return [orm_to_trade(r) for r in rows]
+
+    def count_trades_for_plan(self, plan_id: str) -> int:
+        """Return number of trades currently linked to a plan."""
+        stmt = select(func.count()).select_from(TradeModel).where(
+            TradeModel.trade_plan_id == plan_id
+        )
+        return self._session.execute(stmt).scalar_one()
+
+    def get_by_plan_id(self, plan_id: str) -> List[Trade]:
+        """Return all trades linked to a specific plan, ordered by entry_datetime."""
+        stmt = (
+            select(TradeModel)
+            .where(TradeModel.trade_plan_id == plan_id)
+            .order_by(TradeModel.entry_datetime.asc().nulls_last())
+        )
+        rows = self._session.execute(stmt).scalars().all()
+        return [orm_to_trade(r) for r in rows]
+
     def get_trades_for_date(self, account_id: str, target_date) -> List[Trade]:
         """Return all closed trades whose exit_datetime falls on target_date (date object)."""
         from datetime import datetime as _dt

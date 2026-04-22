@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel
 
 from src.main.python.models.trade_plan import TradePlan
+from src.main.python.api.schemas.trade import TradeResponse
 
 
 class TradePlanCreate(BaseModel):
@@ -109,3 +110,10 @@ class TradePlanResponse(BaseModel):
             created_at=plan.created_at,
             updated_at=plan.updated_at,
         )
+
+
+class TradePlanSuggestionItem(BaseModel):
+    """A scored candidate trade for plan linking."""
+    trade: TradeResponse
+    score: float
+    reasons: List[str]

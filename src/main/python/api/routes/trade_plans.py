@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.main.python.api.dependencies import get_db, get_account_repo, get_trade_repo, require_account
-from src.main.python.api.schemas.trade_plan import TradePlanCreate, TradePlanResponse, TradePlanUpdate
+from src.main.python.api.schemas.trade_plan import TradePlanCreate, TradePlanResponse, TradePlanUpdate, TradePlanSuggestionItem
 from src.main.python.api.schemas.trade import TradeResponse
 from src.main.python.models.trade_plan import TradePlan
 from src.main.python.services.trade_plan_repository import TradePlanRepository
@@ -172,7 +172,81 @@ def unlink_plan_from_trade(
     updated_trade = dataclasses.replace(trade, trade_plan_id=None)
     saved_trade = trade_repo.save(updated_trade)
 
-    # Reset plan status back to planned if no other trades are linked
-    plan_repo.update(plan_id, {"status": "planned"})
+    # Only reset plan status if no other trades remain linked
+    remaining = trade_repo.count_trades_for_plan(plan_id)
+    if remaining == 0:
+        plan_repo.update(plan_id, {"status": "planned"})
 
     return TradeResponse.from_domain(saved_trade)
+
+
+@router.get(
+    "/{account_id}/trade-plans/{plan_id}/trades",
+    response_model=List[TradeResponse],
+)
+def get_linked_trades(
+    account_id: str,
+    plan_id: str,
+    db: Session = Depends(get_db),
+):
+    """Return all trades currently linked to this plan."""
+    plan_repo = _get_plan_repo(db)
+    trade_repo: TradeRepository = get_trade_repo(db)
+    _require_plan(plan_id, account_id, plan_repo)
+    trades = trade_repo.get_by_plan_id(plan_id)
+    return [TradeResponse.from_domain(t) for t in trades]
+
+
+@router.get(
+    "/{account_id}/trade-plans/{plan_id}/suggestions",
+    response_model=List[TradePlanSuggestionItem],
+)
+def get_plan_suggestions(
+    account_id: str,
+    plan_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Return up to 10 unlinked trades ranked by how well they match this plan.
+    Scoring: +3 symbol match, +2 direction match, +1 same-day (within 24h).
+    Only trades with score > 0 are returned.
+    """
+    plan_repo = _get_plan_repo(db)
+    trade_repo: TradeRepository = get_trade_repo(db)
+
+    plan = _require_plan(plan_id, account_id, plan_repo)
+    unlinked = trade_repo.get_unlinked_by_account(account_id, limit=200)
+
+    scored = []
+    for trade in unlinked:
+        score = 0.0
+        reasons: List[str] = []
+
+        if plan.symbol and trade.symbol and plan.symbol.upper() == trade.symbol.upper():
+            score += 3
+            reasons.append(f"Symbol match ({trade.symbol})")
+
+        if plan.intended_direction and trade.direction:
+            if plan.intended_direction.lower() == trade.direction.lower():
+                score += 2
+                reasons.append(f"Direction match ({trade.direction})")
+
+        trade_dt = trade.entry_datetime or trade.exit_datetime
+        if plan.created_at and trade_dt:
+            hours_diff = abs((trade_dt - plan.created_at).total_seconds()) / 3600
+            if hours_diff <= 24:
+                score += 1
+                reasons.append(f"Within 24h of plan creation ({int(hours_diff)}h gap)")
+
+        if score > 0:
+            scored.append((score, reasons, trade))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [
+        TradePlanSuggestionItem(
+            trade=TradeResponse.from_domain(t),
+            score=s,
+            reasons=r,
+        )
+        for s, r, t in scored[:10]
+    ]

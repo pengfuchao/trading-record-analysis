@@ -59,6 +59,20 @@ def list_trades(
     )
 
 
+@router.get("/{account_id}/trades/unlinked", response_model=List[TradeResponse])
+def list_unlinked_trades(
+    account_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Return trades with no linked plan, ordered by entry_datetime descending."""
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    require_account(account_id, account_repo)
+    trades = trade_repo.get_unlinked_by_account(account_id, limit=limit)
+    return [TradeResponse.from_domain(t) for t in trades]
+
+
 @router.post("/{account_id}/trades", response_model=TradeResponse, status_code=201)
 def create_trade(
     account_id: str,

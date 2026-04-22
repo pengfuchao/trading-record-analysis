@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
-import { api, TradePlan, Trade, TradeListResponse, SetupDefinition } from "@/lib/api";
+import { api, TradePlan, Trade, TradePlanSuggestion, SetupDefinition } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import { fmtDateTime, fmt } from "@/lib/utils";
 import { SetupTypeSelect } from "@/components/SetupTypeSelect";
@@ -180,12 +180,23 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
   const { data: setups = [] } = useSWR<SetupDefinition[]>("setups", () => api.listSetups());
   const setupNames = setups.map((s) => s.name);
 
-  // Trades for linking — fetch all (up to 500) so client-side plan filtering works
-  const { data: tradesData } = useSWR<TradeListResponse>(
-    accountId ? `trades-${accountId}--` : null,
-    () => api.listTrades(accountId!, { page: 1, page_size: 500 })
+  // Trades linked to this plan
+  const { data: linkedTrades = [] } = useSWR<Trade[]>(
+    accountId && planId ? `plan-linked-trades-${planId}` : null,
+    () => api.getLinkedTrades(accountId!, planId)
   );
-  const trades = tradesData?.items ?? [];
+
+  // Unlinked trades for the dropdown — server-filtered, most recent 100
+  const { data: unlinkedTrades = [] } = useSWR<Trade[]>(
+    accountId ? `unlinked-trades-${accountId}` : null,
+    () => api.getUnlinkedTrades(accountId!)
+  );
+
+  // Suggestions for this plan
+  const { data: suggestions = [] } = useSWR<TradePlanSuggestion[]>(
+    accountId && planId ? `plan-suggestions-${planId}` : null,
+    () => api.getSuggestedTrades(accountId!, planId)
+  );
 
   const [editing, setEditing] = useState(false);
   const [editState, setEditState] = useState<EditState | null>(null);
@@ -205,13 +216,12 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
 
   const statusCls = STATUS_COLORS[plan.status] ?? STATUS_COLORS.planned;
 
-  // Trades that are currently linked to this plan
-  const linkedTrades = trades.filter((t: Trade) => t.trade_plan_id === planId);
-  // Unlinked trades (no plan attached)
-  const unlinkableTrades = trades.filter((t: Trade) => !t.trade_plan_id);
+  // Suggested trade IDs — exclude already-linked trades from the suggestions list
+  const linkedTradeIds = new Set(linkedTrades.map((t: Trade) => t.trade_id));
+  const filteredSuggestions = suggestions.filter((s) => !linkedTradeIds.has(s.trade.trade_id));
 
   function openEdit() {
-    setEditState(initEdit(plan));
+    setEditState(initEdit(plan!));
     setSaveError(null);
     setSaveSuccess(false);
     setEditing(true);
@@ -240,21 +250,27 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
     }
   }
 
-  async function handleLink() {
-    if (!selectedTradeId) return;
+  async function handleLinkById(tradeId: string) {
     setLinking(true);
     setLinkError(null);
     try {
-      await api.linkPlanToTrade(accountId, planId, selectedTradeId);
+      await api.linkPlanToTrade(accountId, planId, tradeId);
       await mutate(swrKey);
       await mutate(`trade-plans-${accountId}`);
-      await mutate((key) => typeof key === "string" && key.startsWith(`trades-${accountId}`));
+      await mutate(`plan-linked-trades-${planId}`);
+      await mutate(`unlinked-trades-${accountId}`);
+      await mutate(`plan-suggestions-${planId}`);
       setSelectedTradeId("");
     } catch (err: unknown) {
       setLinkError(err instanceof Error ? err.message : "Link failed");
     } finally {
       setLinking(false);
     }
+  }
+
+  async function handleLink() {
+    if (!selectedTradeId) return;
+    await handleLinkById(selectedTradeId);
   }
 
   async function handleDelete() {
@@ -275,7 +291,9 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
       await api.unlinkPlanFromTrade(accountId, planId, tradeId);
       await mutate(swrKey);
       await mutate(`trade-plans-${accountId}`);
-      await mutate((key) => typeof key === "string" && key.startsWith(`trades-${accountId}`));
+      await mutate(`plan-linked-trades-${planId}`);
+      await mutate(`unlinked-trades-${accountId}`);
+      await mutate(`plan-suggestions-${planId}`);
     } catch (err: unknown) {
       setLinkError(err instanceof Error ? err.message : "Unlink failed");
     }
@@ -451,6 +469,52 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
             </dl>
           </section>
 
+          {/* Suggested matches */}
+          {plan.status !== "cancelled" && filteredSuggestions.length > 0 && (
+            <section className="bg-gray-900 border border-yellow-800/50 rounded-lg p-5">
+              <h2 className="text-xs uppercase tracking-wider text-yellow-600 mb-3">
+                Suggested Matches ({filteredSuggestions.length})
+              </h2>
+              <div className="space-y-2">
+                {filteredSuggestions.map((s) => (
+                  <div key={s.trade.trade_id} className="flex items-center justify-between bg-gray-800/50 rounded px-3 py-2 gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Link href={`/trades/${s.trade.trade_id}`} className="text-sm text-blue-400 hover:text-blue-300">
+                          {s.trade.symbol} {s.trade.direction}
+                        </Link>
+                        <span className="text-xs text-gray-500">
+                          {s.trade.entry_datetime ? new Date(s.trade.entry_datetime).toLocaleDateString() : "?"}
+                        </span>
+                        <span className={`text-xs ${s.trade.result === "Win" ? "text-green-400" : s.trade.result === "Loss" ? "text-red-400" : "text-gray-400"}`}>
+                          {s.trade.result ?? "—"}
+                        </span>
+                        {s.trade.net_pnl != null && (
+                          <span className={`text-xs ${s.trade.net_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {s.trade.net_pnl >= 0 ? "+" : ""}{s.trade.net_pnl.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-1.5 mt-1 flex-wrap">
+                        {s.reasons.map((r, i) => (
+                          <span key={i} className="text-xs bg-yellow-900/30 text-yellow-500 border border-yellow-800/50 px-1.5 py-0.5 rounded">
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => { setSelectedTradeId(s.trade.trade_id); handleLinkById(s.trade.trade_id); }}
+                      className="shrink-0 px-3 py-1.5 text-xs bg-yellow-700 hover:bg-yellow-600 text-white rounded"
+                    >
+                      Link
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Linked trades */}
           <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
             <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-4">Linked Trades</h2>
@@ -462,21 +526,49 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
             {linkedTrades.length > 0 && (
               <div className="space-y-2 mb-4">
                 {linkedTrades.map((t: Trade) => (
-                  <div key={t.trade_id} className="flex items-center justify-between bg-gray-800/50 rounded px-3 py-2">
-                    <div>
-                      <Link href={`/trades/${t.trade_id}`} className="text-sm text-blue-400 hover:text-blue-300">
-                        {t.symbol} {t.direction} — {fmtDateTime(t.entry_datetime)}
-                      </Link>
-                      <span className={`ml-2 text-xs ${t.result === "win" ? "text-green-400" : t.result === "loss" ? "text-red-400" : "text-gray-400"}`}>
-                        {t.result ?? "—"}
-                      </span>
+                  <div key={t.trade_id} className="bg-gray-800/50 rounded px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Link href={`/trades/${t.trade_id}`} className="text-sm text-blue-400 hover:text-blue-300">
+                          {t.symbol} {t.direction} — {fmtDateTime(t.entry_datetime)}
+                        </Link>
+                        <span className={`text-xs ${t.result === "Win" ? "text-green-400" : t.result === "Loss" ? "text-red-400" : "text-gray-400"}`}>
+                          {t.result ?? "—"}
+                        </span>
+                        {t.net_pnl != null && (
+                          <span className={`text-xs ${t.net_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {t.net_pnl >= 0 ? "+" : ""}{t.net_pnl.toFixed(2)}
+                          </span>
+                        )}
+                        {t.actual_r_multiple != null && (
+                          <span className="text-xs text-gray-500">{t.actual_r_multiple.toFixed(2)}R</span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleUnlink(t.trade_id)}
+                        className="text-xs text-gray-500 hover:text-red-400 transition-colors shrink-0 ml-3"
+                      >
+                        Unlink
+                      </button>
                     </div>
-                    <button
-                      onClick={() => handleUnlink(t.trade_id)}
-                      className="text-xs text-gray-500 hover:text-red-400 transition-colors"
-                    >
-                      Unlink
-                    </button>
+                    {/* Post-trade execution summary */}
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {t.followed_plan === true && (
+                        <span className="text-xs bg-green-900/30 text-green-500 border border-green-800/50 px-1.5 py-0.5 rounded">Followed plan</span>
+                      )}
+                      {t.followed_plan === false && (
+                        <span className="text-xs bg-red-900/30 text-red-500 border border-red-800/50 px-1.5 py-0.5 rounded">Didn&apos;t follow plan</span>
+                      )}
+                      {t.fomo && <span className="text-xs bg-gray-700/50 text-gray-400 px-1.5 py-0.5 rounded">FOMO</span>}
+                      {t.emotional_trade && <span className="text-xs bg-gray-700/50 text-gray-400 px-1.5 py-0.5 rounded">Emotional</span>}
+                      {t.revenge_trade && <span className="text-xs bg-gray-700/50 text-gray-400 px-1.5 py-0.5 rounded">Revenge</span>}
+                      {t.early_entry && <span className="text-xs bg-gray-700/50 text-gray-400 px-1.5 py-0.5 rounded">Early entry</span>}
+                      {t.moved_stop && <span className="text-xs bg-gray-700/50 text-gray-400 px-1.5 py-0.5 rounded">Moved stop</span>}
+                      {t.premature_exit && <span className="text-xs bg-gray-700/50 text-gray-400 px-1.5 py-0.5 rounded">Premature exit</span>}
+                    </div>
+                    {t.lesson_learned && (
+                      <p className="mt-1.5 text-xs text-gray-400 italic">💡 {t.lesson_learned}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -491,7 +583,7 @@ export default function PlanDetailPage({ params }: { params: { planId: string } 
                   className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500 flex-1"
                 >
                   <option value="">Select a trade to link…</option>
-                  {unlinkableTrades.map((t: Trade) => (
+                  {unlinkedTrades.map((t: Trade) => (
                     <option key={t.trade_id} value={t.trade_id}>
                       {t.symbol} {t.direction} — {t.entry_datetime ? new Date(t.entry_datetime).toLocaleDateString() : "?"} ({t.result ?? "?"})
                     </option>

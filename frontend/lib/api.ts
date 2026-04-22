@@ -207,6 +207,12 @@ export const api = {
     request<Trade>(`/accounts/${accountId}/trade-plans/${planId}/link/${tradeId}`, { method: "POST" }),
   unlinkPlanFromTrade: (accountId: string, planId: string, tradeId: string) =>
     request<Trade>(`/accounts/${accountId}/trade-plans/${planId}/link/${tradeId}`, { method: "DELETE" }),
+  getLinkedTrades: (accountId: string, planId: string) =>
+    request<Trade[]>(`/accounts/${accountId}/trade-plans/${planId}/trades`),
+  getSuggestedTrades: (accountId: string, planId: string) =>
+    request<TradePlanSuggestion[]>(`/accounts/${accountId}/trade-plans/${planId}/suggestions`),
+  getUnlinkedTrades: (accountId: string) =>
+    request<Trade[]>(`/accounts/${accountId}/trades/unlinked`),
 
   // MT5 Sync
   getMt5Config: (accountId: string) =>
@@ -403,6 +409,12 @@ export interface TradePlan {
   notes?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface TradePlanSuggestion {
+  trade: Trade;
+  score: number;
+  reasons: string[];
 }
 
 export interface AccountAnalytics {
