@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { api, DailyPlan, DailyReview } from "@/lib/api";
+import { api, DailyAdherenceResponse, DailyPlan, DailyReview } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import { fmtDate, fmtPnl, pnlColor } from "@/lib/utils";
@@ -27,6 +27,94 @@ const inputCls =
   "bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 w-full";
 const labelCls = "block text-xs text-gray-500 uppercase tracking-wider mb-1";
 
+// ── Adherence panel ────────────────────────────────────────────────────────────
+
+function AdherencePanel({ adh }: { adh: DailyAdherenceResponse }) {
+  const hasAnyRule =
+    adh.allowed_setups_configured ||
+    adh.disallowed_setups_configured ||
+    adh.max_trades_limit != null;
+
+  const anyViolation =
+    adh.max_trades_exceeded ||
+    adh.outside_allowed_count > 0 ||
+    adh.disallowed_violation_count > 0;
+
+  return (
+    <div className={`mt-3 rounded-md border p-3 space-y-2 text-xs ${
+      anyViolation ? "border-red-800 bg-red-950/20" : "border-gray-700 bg-gray-800/40"
+    }`}>
+      <div className="flex items-center gap-2">
+        <span className="text-gray-400 uppercase tracking-wider font-medium">Daily Adherence</span>
+        {anyViolation ? (
+          <span className="bg-red-900/60 text-red-300 px-2 py-0.5 rounded text-xs">Violations</span>
+        ) : adh.trades_taken > 0 ? (
+          <span className="bg-green-900/40 text-green-300 px-2 py-0.5 rounded text-xs">Clean</span>
+        ) : (
+          <span className="bg-gray-800 text-gray-500 px-2 py-0.5 rounded text-xs">No trades</span>
+        )}
+      </div>
+
+      {/* Trade counts */}
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <p className="text-gray-500">Trades taken</p>
+          <p className={`font-medium ${adh.max_trades_exceeded ? "text-red-400" : "text-gray-200"}`}>
+            {adh.trades_taken}
+            {adh.max_trades_limit != null && (
+              <span className="text-gray-500 font-normal"> / {adh.max_trades_limit} max</span>
+            )}
+          </p>
+        </div>
+        <div>
+          <p className="text-gray-500">Planned</p>
+          <p className="text-gray-200 font-medium">{adh.planned_count}</p>
+        </div>
+        <div>
+          <p className="text-gray-500">Unplanned</p>
+          <p className={`font-medium ${adh.unplanned_count > 0 ? "text-yellow-400" : "text-gray-200"}`}>
+            {adh.unplanned_count}
+          </p>
+        </div>
+      </div>
+
+      {/* Setup violations */}
+      {adh.allowed_setups_configured && adh.outside_allowed_count > 0 && (
+        <div className="text-red-300">
+          <span className="text-gray-400">Outside allowed setups: </span>
+          {adh.outside_allowed_setups.join(", ")}
+        </div>
+      )}
+      {adh.disallowed_violation_count > 0 && (
+        <div className="text-red-300">
+          <span className="text-gray-400">Disallowed setup violations: </span>
+          {adh.disallowed_violations.map(v => v.setup_type ?? "Unknown").join(", ")}
+        </div>
+      )}
+      {adh.untagged_count > 0 && hasAnyRule && (
+        <div className="text-gray-500">
+          {adh.untagged_count} trade(s) missing setup_type — could not check setup adherence.
+        </div>
+      )}
+
+      {/* Discipline signals */}
+      {adh.discipline_signals.length > 0 && (
+        <ul className="space-y-0.5 border-t border-gray-700 pt-2">
+          {adh.discipline_signals.map((s, i) => (
+            <li key={i} className="text-yellow-300 before:content-['▸'] before:mr-1 before:text-yellow-600">
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {adh.trades_taken === 0 && !hasAnyRule && (
+        <p className="text-gray-600">No rules configured and no trades on this date.</p>
+      )}
+    </div>
+  );
+}
+
 // ── Plan card ─────────────────────────────────────────────────────────────────
 
 function PlanCard({ plan, accountId }: { plan: DailyPlan; accountId: string }) {
@@ -36,6 +124,11 @@ function PlanCard({ plan, accountId }: { plan: DailyPlan; accountId: string }) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editError, setEditError] = useState("");
+
+  const { data: adherence } = useSWR(
+    open && accountId ? `adherence-${plan.plan_id}` : null,
+    () => api.getDailyAdherence(accountId, plan.plan_id)
+  );
 
   const [form, setForm] = useState({
     trading_date: plan.trading_date,
@@ -311,6 +404,7 @@ function PlanCard({ plan, accountId }: { plan: DailyPlan; accountId: string }) {
           {plan.max_trades != null && (
             <p className="text-xs text-gray-400">Max trades: {plan.max_trades}</p>
           )}
+          {adherence && <AdherencePanel adh={adherence} />}
         </div>
       )}
     </div>

@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 
 from src.main.python.api.dependencies import get_account_repo, get_db, require_account
 from src.main.python.api.schemas.daily_plan import (
-    DailyPlanCreate, DailyPlanResponse, DailyPlanUpdate,
+    DailyAdherenceResponse, DailyPlanCreate, DailyPlanResponse, DailyPlanUpdate,
     DailyReviewCreate, DailyReviewResponse, DailyReviewUpdate,
-    plan_to_response, review_to_response,
+    adherence_to_response, plan_to_response, review_to_response,
 )
+from src.main.python.core.account_analytics import AccountAnalytics
 from src.main.python.models.daily_plan import DailyPlan, DailyReview
 from src.main.python.services.daily_plan_repository import DailyPlanRepository
+from src.main.python.services.trade_repository import TradeRepository
 
 plans_router = APIRouter(prefix="/accounts", tags=["daily-plans"])
 reviews_router = APIRouter(prefix="/accounts", tags=["daily-reviews"])
@@ -98,6 +100,31 @@ def delete_plan(account_id: str, plan_id: str, db: Session = Depends(get_db)):
     deleted = _get_repo(db).delete_plan(plan_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Plan not found")
+
+
+@plans_router.get("/{account_id}/daily-plans/{plan_id}/adherence", response_model=DailyAdherenceResponse)
+def get_daily_adherence(account_id: str, plan_id: str, db: Session = Depends(get_db)):
+    """
+    Compute daily plan adherence for the given plan's trading_date.
+
+    Compares closed trades (exit_datetime on plan.trading_date) against:
+      - max_trades limit
+      - allowed_setups list (if configured)
+      - disallowed_setups list (if configured)
+      - planned vs unplanned trade counts (via TradePlan linkage)
+
+    daily_max_risk_pct is NOT checked — per-trade risk % requires instrument-specific
+    pip values not available in current Trade fields.
+    """
+    require_account(account_id, get_account_repo(db))
+    repo = _get_repo(db)
+    plan = repo.get_plan_by_id(plan_id)
+    if not plan or plan.account_id != account_id:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    trades = TradeRepository(db).get_trades_for_date(account_id, plan.trading_date)
+    report = AccountAnalytics.compute_daily_adherence(plan, trades)
+    return adherence_to_response(report, plan)
 
 
 # ── Post-market Reviews ────────────────────────────────────────────────────────

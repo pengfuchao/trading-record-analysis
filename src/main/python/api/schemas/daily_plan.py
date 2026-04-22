@@ -6,6 +6,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from src.main.python.models.daily_plan import DailyPlan, DailyReview
+from src.main.python.core.performance_summary import DailyAdherenceReport
 
 
 # ── Pre-market Plan schemas ────────────────────────────────────────────────────
@@ -133,6 +134,67 @@ def plan_to_response(p: DailyPlan) -> DailyPlanResponse:
         special_rule=p.special_rule,
         created_at=p.created_at,
         updated_at=p.updated_at,
+    )
+
+
+# ── Daily adherence schemas ────────────────────────────────────────────────────
+
+class SetupViolationResponse(BaseModel):
+    trade_id: str
+    setup_type: Optional[str]
+
+
+class DailyAdherenceResponse(BaseModel):
+    trading_date:               date
+    trades_taken:               int
+
+    planned_count:              int
+    unplanned_count:            int
+
+    max_trades_limit:           Optional[int]
+    max_trades_exceeded:        bool
+    max_trades_exceeded_by:     int
+
+    allowed_setups_configured:  bool
+    outside_allowed_count:      int
+    outside_allowed_setups:     List[str]
+
+    disallowed_setups_configured: bool
+    disallowed_violation_count: int
+    disallowed_violations:      List[SetupViolationResponse]
+
+    untagged_count:             int
+    discipline_signals:         List[str]
+
+    # Plan context (for UI display)
+    plan_allowed_setups:        List[str]
+    plan_disallowed_setups:     List[str]
+    plan_max_trades:            Optional[int]
+
+
+def adherence_to_response(report: DailyAdherenceReport, plan) -> DailyAdherenceResponse:
+    return DailyAdherenceResponse(
+        trading_date=report.trading_date,
+        trades_taken=report.trades_taken,
+        planned_count=report.planned_count,
+        unplanned_count=report.unplanned_count,
+        max_trades_limit=report.max_trades_limit,
+        max_trades_exceeded=report.max_trades_exceeded,
+        max_trades_exceeded_by=report.max_trades_exceeded_by,
+        allowed_setups_configured=report.allowed_setups_configured,
+        outside_allowed_count=report.outside_allowed_count,
+        outside_allowed_setups=report.outside_allowed_setups,
+        disallowed_setups_configured=report.disallowed_setups_configured,
+        disallowed_violation_count=report.disallowed_violation_count,
+        disallowed_violations=[
+            SetupViolationResponse(trade_id=v.trade_id, setup_type=v.setup_type)
+            for v in report.disallowed_violations
+        ],
+        untagged_count=report.untagged_count,
+        discipline_signals=report.discipline_signals,
+        plan_allowed_setups=plan.allowed_setups,
+        plan_disallowed_setups=plan.disallowed_setups,
+        plan_max_trades=plan.max_trades,
     )
 
 

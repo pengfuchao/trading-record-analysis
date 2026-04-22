@@ -171,6 +171,8 @@ export const api = {
     }),
   deletePlan: (accountId: string, planId: string) =>
     request<void>(`/accounts/${accountId}/daily-plans/${planId}`, { method: "DELETE" }),
+  getDailyAdherence: (accountId: string, planId: string) =>
+    request<DailyAdherenceResponse>(`/accounts/${accountId}/daily-plans/${planId}/adherence`),
 
   // Trade Plans
   listTradePlans: (accountId: string, status?: string) => {
@@ -908,6 +910,32 @@ export interface EntryExitQualityResponse {
   primary_diagnosis: "exit_discipline" | "entry_quality" | "mixed" | "unclear";
   confidence: "low" | "moderate" | "high";
   coaching_signals: string[];
+}
+
+export interface SetupViolation {
+  trade_id: string;
+  setup_type?: string;
+}
+
+export interface DailyAdherenceResponse {
+  trading_date: string;
+  trades_taken: number;
+  planned_count: number;
+  unplanned_count: number;
+  max_trades_limit?: number;
+  max_trades_exceeded: boolean;
+  max_trades_exceeded_by: number;
+  allowed_setups_configured: boolean;
+  outside_allowed_count: number;
+  outside_allowed_setups: string[];
+  disallowed_setups_configured: boolean;
+  disallowed_violation_count: number;
+  disallowed_violations: SetupViolation[];
+  untagged_count: number;
+  discipline_signals: string[];
+  plan_allowed_setups: string[];
+  plan_disallowed_setups: string[];
+  plan_max_trades?: number;
 }
 
 export interface PlanAdherenceResponse {

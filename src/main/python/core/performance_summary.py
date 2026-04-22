@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
 
 
@@ -257,6 +257,56 @@ class EntryExitQualityReport:
     confidence: str                          # "low" | "moderate" | "high"
 
     coaching_signals: List[str] = field(default_factory=list)
+
+
+@dataclass
+class SetupViolation:
+    """One trade that violated a setup rule."""
+    trade_id: str
+    setup_type: Optional[str]
+
+
+@dataclass
+class DailyAdherenceReport:
+    """
+    Adherence of actual trades against pre-market DailyPlan rules for one trading day.
+
+    Computed from closed trades whose exit_datetime falls on trading_date.
+
+    Notes:
+      - planned_count uses trade_plan_id presence as proxy for 'pre-planned via TradePlan'.
+      - Setup checks require trade.setup_type to be set; untagged trades are counted in
+        untagged_count and excluded from setup violation counts.
+      - daily_max_risk_pct is NOT checked — per-trade risk % requires instrument-specific
+        pip values not available in current Trade fields.
+    """
+    trading_date:               date
+    trades_taken:               int
+
+    # Planned vs unplanned (by TradePlan linkage)
+    planned_count:              int             # trades with trade_plan_id set
+    unplanned_count:            int             # trades without trade_plan_id
+
+    # Max trades rule
+    max_trades_limit:           Optional[int]   # None if not configured in plan
+    max_trades_exceeded:        bool
+    max_trades_exceeded_by:     int             # trades_taken - max_trades_limit; 0 if not exceeded
+
+    # Allowed setup check (only meaningful when allowed_setups non-empty in plan)
+    allowed_setups_configured:  bool
+    outside_allowed_count:      int             # trades whose setup_type not in allowed list
+    outside_allowed_setups:     List[str]       # distinct setup_type values that violated
+
+    # Disallowed setup check
+    disallowed_setups_configured: bool
+    disallowed_violation_count: int
+    disallowed_violations:      List[SetupViolation]   # [{trade_id, setup_type}]
+
+    # Untagged trades — setup_type is None, cannot be checked
+    untagged_count:             int
+
+    # Plain-English discipline signals
+    discipline_signals:         List[str] = field(default_factory=list)
 
 
 @dataclass

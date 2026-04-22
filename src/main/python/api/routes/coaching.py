@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from src.main.python.api.dependencies import (
     get_account_repo, get_db, get_trade_repo, require_account,
 )
+from src.main.python.services.daily_plan_repository import DailyPlanRepository
 from src.main.python.services.trade_plan_repository import TradePlanRepository
 from src.main.python.api.schemas.coaching import (
     CoachingReviewDetailResponse,
@@ -82,12 +83,21 @@ def generate_weekly_review(
             if trade.trade_plan_id and trade.trade_plan_id in plans_by_id:
                 trade.planned_rr = plans_by_id[trade.trade_plan_id].planned_rr
 
+    # Load daily plans for the period (for discipline signals in coaching)
+    daily_plan_repo = DailyPlanRepository(db)
+    daily_plans = daily_plan_repo.list_plans(
+        account_id,
+        from_date=from_date.date() if from_date else None,
+        to_date=to_date.date() if to_date else None,
+    )
+
     # Generate (AI or fallback — never raises)
     result = _coach.generate(
         trades=trades,
         account=account,
         from_date=from_date.date() if from_date else None,
         to_date=to_date.date() if to_date else None,
+        daily_plans=daily_plans or None,
     )
 
     # Persist

@@ -94,6 +94,13 @@ class CoachingContext:
     entry_exit_early_exit_pct: Optional[float] = None  # % of TP-eligible wins exited early
     entry_exit_signals: List[str] = field(default_factory=list)
 
+    # Daily plan discipline (populated when daily_plans are provided and have violations)
+    daily_days_with_violations: int = 0              # days where any rule was breached
+    daily_max_exceeded_days: int = 0                 # days where max_trades was exceeded
+    daily_disallowed_violations: int = 0             # total disallowed-setup trade count
+    daily_outside_allowed: int = 0                   # total outside-allowed-list trade count
+    daily_discipline_signals: List[str] = field(default_factory=list)
+
 
 # ── Generation result ──────────────────────────────────────────────────────────
 
@@ -152,12 +159,15 @@ class AICoachService:
         account: Account,
         from_date: Optional[date] = None,
         to_date: Optional[date] = None,
+        daily_plans: Optional[list] = None,  # List[DailyPlan] — avoid circular import
     ) -> ReviewResult:
         """
         Generate a coaching review. Always returns a ReviewResult — never raises.
         Falls back to rule-based output if AI is unavailable or fails.
+        daily_plans: optional pre-market plans for the period; used to compute
+        daily discipline signals (setup violations, max-trades breaches).
         """
-        ctx = self._build_context(trades, account, from_date, to_date)
+        ctx = self._build_context(trades, account, from_date, to_date, daily_plans=daily_plans)
 
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -174,6 +184,7 @@ class AICoachService:
         account: Account,
         from_date: Optional[date],
         to_date: Optional[date],
+        daily_plans: Optional[list] = None,
     ) -> CoachingContext:
         report = AccountAnalytics.generate_report(trades, account)
         mistake_report = MistakeAnalyzer().generate_report(trades, account.account_id)
@@ -297,6 +308,46 @@ class AICoachService:
             if tp_wins > 0:
                 exit_target_hit_pct = round(exit_report.target_hit.count / tp_wins * 100, 1)
 
+        # Daily plan discipline (optional — only when daily_plans are supplied)
+        daily_days_with_violations = 0
+        daily_max_exceeded_days = 0
+        daily_disallowed_violations = 0
+        daily_outside_allowed = 0
+        daily_discipline_signals: list = []
+
+        if daily_plans:
+            from collections import defaultdict
+            trades_by_date: dict = defaultdict(list)
+            for t in trades:
+                if t.exit_datetime is not None:
+                    trades_by_date[t.exit_datetime.date()].append(t)
+
+            for dp in daily_plans:
+                day_trades = trades_by_date.get(dp.trading_date, [])
+                if not day_trades:
+                    continue
+                adh = AccountAnalytics.compute_daily_adherence(dp, day_trades)
+                if adh.discipline_signals:
+                    daily_days_with_violations += 1
+                if adh.max_trades_exceeded:
+                    daily_max_exceeded_days += 1
+                daily_disallowed_violations += adh.disallowed_violation_count
+                daily_outside_allowed += adh.outside_allowed_count
+
+            if daily_disallowed_violations > 0:
+                daily_discipline_signals.append(
+                    f"{daily_disallowed_violations} trade(s) used explicitly disallowed setups."
+                )
+            if daily_outside_allowed > 0:
+                daily_discipline_signals.append(
+                    f"{daily_outside_allowed} trade(s) used setups outside the daily allowed list."
+                )
+            if daily_max_exceeded_days > 0:
+                days_word = "day" if daily_max_exceeded_days == 1 else "days"
+                daily_discipline_signals.append(
+                    f"Daily max trades was exceeded on {daily_max_exceeded_days} {days_word}."
+                )
+
         # Entry vs exit quality
         eq_report = AccountAnalytics.compute_entry_exit_quality(trades)
         entry_exit_diagnosis: Optional[str] = None
@@ -364,6 +415,11 @@ class AICoachService:
             entry_exit_confidence=entry_exit_confidence,
             entry_exit_early_exit_pct=entry_exit_early_exit_pct,
             entry_exit_signals=eq_report.coaching_signals if eq_report.classified_trades >= 5 else [],
+            daily_days_with_violations=daily_days_with_violations,
+            daily_max_exceeded_days=daily_max_exceeded_days,
+            daily_disallowed_violations=daily_disallowed_violations,
+            daily_outside_allowed=daily_outside_allowed,
+            daily_discipline_signals=daily_discipline_signals,
         )
 
     # ── AI path ────────────────────────────────────────────────────────────────
@@ -615,6 +671,14 @@ class AICoachService:
                 "did not reach their target. Address exit discipline first (directly observable), "
                 "then review entry selection. Confidence in this split: moderate."
             )
+        elif ctx.daily_discipline_signals:
+            n_violations = ctx.daily_disallowed_violations + ctx.daily_outside_allowed
+            signals_str = " ".join(ctx.daily_discipline_signals)
+            diagnosis = (
+                f"Daily plan discipline gaps were detected this period. {signals_str} "
+                f"Rule violations are among the most controllable sources of loss — "
+                f"they happen when the discipline to follow pre-written rules breaks down under market pressure."
+            )
         elif ctx.profit_factor is not None and ctx.profit_factor < 1.0:
             diagnosis = (
                 "Profit factor is below 1.0, indicating losses exceed gross profits. "
@@ -710,6 +774,13 @@ class AICoachService:
             improvement = (
                 f"Bring plan adherence above 80% (currently {ctx.followed_plan_rate}%). "
                 f"After each trade, immediately tag whether it followed the plan or deviated."
+            )
+        elif ctx.daily_discipline_signals and (ctx.daily_disallowed_violations > 0 or ctx.daily_outside_allowed > 0):
+            improvement = (
+                "Before entering each trade today, verify your setup is explicitly listed in "
+                "the day's allowed setups and is not in the disallowed list. "
+                "If you find yourself about to take a setup not on the plan, pause and either "
+                "skip the trade or update the daily plan first."
             )
         elif ctx.planned_trade_count == 0 and ctx.total_trades >= 5:
             improvement = (
@@ -863,6 +934,13 @@ class AICoachService:
         else:
             rr_trend_block = "  not enough weekly buckets to determine trend (need >= 4)"
 
+        # ── Daily plan discipline block ───────────────────────────────────────
+        daily_lines = []
+        if ctx.daily_discipline_signals:
+            for sig in ctx.daily_discipline_signals:
+                daily_lines.append(f"  {sig}")
+        daily_block = "\n".join(daily_lines) if daily_lines else "  no daily plans on record for this period"
+
         # ── Entry vs exit quality block ───────────────────────────────────────
         eq_lines = []
         if ctx.entry_exit_diagnosis is not None:
@@ -907,6 +985,9 @@ EXECUTION QUALITY:
 
 PLAN ADHERENCE:
 {plan_block}
+
+DAILY PLAN DISCIPLINE (setup rules, max-trades limits):
+{daily_block}
 
 PLANNED R:R vs REALIZED R:
 {rr_block}

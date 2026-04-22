@@ -5,8 +5,10 @@ from typing import Callable, Dict, List, Optional
 
 from src.main.python.core.metrics_calculator import MetricsCalculator
 from src.main.python.core.performance_summary import (
-    AccountReport, ExitDecompositionReport, PerformanceSummary, PlanAdherenceGroup,
+    AccountReport, DailyAdherenceReport, EntryExitQualityReport, ExitBucket,
+    ExitDecompositionReport, PerformanceSummary, PlanAdherenceGroup,
     PlanAdherenceReport, RRComparisonReport, RRTrendBucket, RRTrendReport,
+    SetupViolation,
 )
 from src.main.python.models.account import Account
 from src.main.python.models.enums import TradeResult
@@ -1064,4 +1066,109 @@ class AccountAnalytics:
             primary_diagnosis=primary_diagnosis,
             confidence=confidence,
             coaching_signals=signals,
+        )
+
+    # ── Daily plan adherence ────────────────────────────────────────────────────
+
+    @staticmethod
+    def compute_daily_adherence(
+        plan: object,  # DailyPlan — avoid circular import; duck-typed
+        trades: List[Trade],
+    ) -> DailyAdherenceReport:
+        """
+        Compare closed trades for plan.trading_date against the DailyPlan rules.
+
+        Rules checked:
+          - max_trades: trades_taken vs plan.max_trades
+          - allowed_setups: trade.setup_type must be in the allowed list
+          - disallowed_setups: trade.setup_type must NOT be in the disallowed list
+
+        NOT checked:
+          - daily_max_risk_pct: requires per-trade risk % which needs instrument-specific
+            pip values not currently available in Trade fields.
+
+        trades should already be filtered to the plan's trading_date by the caller.
+        """
+        total = len(trades)
+        planned_count = sum(1 for t in trades if t.trade_plan_id is not None)
+        unplanned_count = total - planned_count
+
+        # Normalize for case-insensitive matching
+        allowed: set = {s.strip().lower() for s in (plan.allowed_setups or [])}
+        disallowed: set = {s.strip().lower() for s in (plan.disallowed_setups or [])}
+
+        # Max trades check
+        max_limit = plan.max_trades
+        exceeded = (max_limit is not None) and (total > max_limit)
+        exceeded_by = (total - max_limit) if exceeded else 0
+
+        # Per-trade setup checks
+        outside_allowed: List[str] = []
+        disallowed_violations: List[SetupViolation] = []
+        untagged = 0
+
+        for t in trades:
+            st = t.setup_type
+            if st is None:
+                untagged += 1
+                continue
+            st_norm = st.strip().lower()
+            if allowed and st_norm not in allowed:
+                outside_allowed.append(st)
+            if disallowed and st_norm in disallowed:
+                disallowed_violations.append(SetupViolation(trade_id=t.trade_id, setup_type=st))
+
+        outside_allowed_setups = sorted(set(outside_allowed))
+        outside_allowed_count = len(outside_allowed)
+
+        # Build plain-English signals
+        signals: List[str] = []
+        if exceeded:
+            signals.append(
+                f"Daily max trades exceeded: took {total} trades against a limit of "
+                f"{max_limit} (+{exceeded_by})."
+            )
+        if allowed and outside_allowed_count > 0:
+            pct = round(outside_allowed_count / total * 100) if total else 0
+            setups_str = ", ".join(f'"{s}"' for s in outside_allowed_setups[:3])
+            more = f" and {len(outside_allowed_setups) - 3} more" if len(outside_allowed_setups) > 3 else ""
+            signals.append(
+                f"{outside_allowed_count}/{total} trade(s) used setups outside the daily "
+                f"allowed list ({pct}%): {setups_str}{more}."
+            )
+        if disallowed_violations:
+            n = len(disallowed_violations)
+            types_str = ", ".join(f'"{s}"' for s in sorted({v.setup_type for v in disallowed_violations}))
+            signals.append(
+                f"{n} trade(s) used explicitly disallowed setups: {types_str}."
+            )
+        if unplanned_count > 0 and total > 0:
+            if planned_count == 0:
+                signals.append(f"All {total} trade(s) were unplanned (no linked TradePlan).")
+            else:
+                signals.append(
+                    f"{unplanned_count} unplanned trade(s) (no linked TradePlan), "
+                    f"{planned_count} planned."
+                )
+        if untagged > 0 and (allowed or disallowed):
+            signals.append(
+                f"{untagged} trade(s) missing setup_type — could not check setup adherence for them."
+            )
+
+        return DailyAdherenceReport(
+            trading_date=plan.trading_date,
+            trades_taken=total,
+            planned_count=planned_count,
+            unplanned_count=unplanned_count,
+            max_trades_limit=max_limit,
+            max_trades_exceeded=exceeded,
+            max_trades_exceeded_by=exceeded_by,
+            allowed_setups_configured=bool(allowed),
+            outside_allowed_count=outside_allowed_count,
+            outside_allowed_setups=outside_allowed_setups,
+            disallowed_setups_configured=bool(disallowed),
+            disallowed_violation_count=len(disallowed_violations),
+            disallowed_violations=disallowed_violations,
+            untagged_count=untagged,
+            discipline_signals=signals,
         )
