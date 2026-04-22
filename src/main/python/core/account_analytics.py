@@ -946,27 +946,34 @@ class AccountAnalytics:
 
         # Primary diagnosis — conservative thresholds
         exit_concern = early_exit_pct is not None and early_exit_pct >= 40
+        # entry_concern requires >= 3 losses to avoid micro-sample over-inference
         entry_concern = (
             stop_hit_pct is not None and stop_hit_pct >= 60
+            and len(losses) >= 3
             and (
                 (entry_flagged_stop_hit_pct is not None and entry_flagged_stop_hit_pct >= 25)
                 or flag_plan_dev >= 2
                 or flag_problem_analysis >= 2
             )
         )
+        # Sparse flags (< 20% coverage) reduce confidence on any entry-side inference
+        flags_sparse = flag_coverage_pct < 20
 
         if total < 5:
             primary_diagnosis = "unclear"
             confidence = "low"
         elif exit_concern and entry_concern:
             primary_diagnosis = "mixed"
-            confidence = "moderate" if total >= 10 else "low"
+            # Sparse flags undermine the entry side of a mixed diagnosis
+            confidence = "low" if (total < 10 or flags_sparse) else "moderate"
         elif exit_concern:
             primary_diagnosis = "exit_discipline"
             confidence = "high" if (total >= 10 and (early_exit_pct or 0) >= 50) else "moderate"
         elif entry_concern:
             primary_diagnosis = "entry_quality"
-            confidence = "moderate"
+            # Always moderate at best — entry inference requires self-reporting;
+            # downgrade to low when flag coverage is sparse
+            confidence = "low" if flags_sparse else "moderate"
         else:
             primary_diagnosis = "unclear"
             confidence = "low"

@@ -1430,6 +1430,13 @@ export default function DashboardPage() {
           <EntryExitQualityPanel data={entryExitData} />
         </section>
       )}
+      {entryExitData && entryExitData.classified_trades < 5 && (
+        <p className="text-xs text-gray-600 px-1">
+          Entry vs Exit Quality appears when ≥5 trades have{" "}
+          <span className="font-mono">actual_r_multiple</span> set.
+          Use <span className="font-mono">Recompute Derived Fields</span> to populate.
+        </p>
+      )}
     </div>
   );
 }

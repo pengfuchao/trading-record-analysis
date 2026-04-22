@@ -590,8 +590,8 @@ class AICoachService:
             diagnosis = (
                 f"Exit discipline is the most visible source of underperformance in this dataset. "
                 f"{ctx.entry_exit_early_exit_pct:.0f}% of wins with a known target were exited "
-                f"before the target, leaving R on the table. "
-                f"Entries appear adequate — the gap is in holding winners to the planned level. "
+                f"before the target. The exit-side gap is directly observable from price data. "
+                f"Entry quality cannot be assessed without MAE/MFE data. "
                 f"Confidence: {ctx.entry_exit_confidence}."
             )
         elif (
