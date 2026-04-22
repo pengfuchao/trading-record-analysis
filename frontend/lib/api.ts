@@ -363,6 +363,9 @@ export interface Trade {
   lesson_learned?: string;
   repeat_next_time?: string;
   avoid_next_time?: string;
+  screenshot_before?: string;
+  screenshot_during?: string;
+  screenshot_after?: string;
   notes?: string;
   trade_plan_id?: string;
   created_at: string;

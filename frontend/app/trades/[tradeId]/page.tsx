@@ -113,6 +113,44 @@ function CheckFlag({ label, checked, onChange }: {
   );
 }
 
+// ── Screenshot helpers ────────────────────────────────────────────────────────
+
+function isDirectImageUrl(url: string): boolean {
+  return /\.(jpe?g|png|gif|webp|svg)(\?.*)?$/i.test(url);
+}
+
+function ScreenshotSlot({ label, url }: { label: string; url?: string | null }) {
+  if (!url) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
+      {isDirectImageUrl(url) ? (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt={label}
+            className="max-h-64 rounded border border-gray-700 object-contain bg-gray-950 hover:border-blue-500 transition-colors"
+          />
+          <span className="text-xs text-blue-400 hover:text-blue-300 mt-1 block truncate">{url}</span>
+        </a>
+      ) : (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 break-all"
+        >
+          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+          {url}
+        </a>
+      )}
+    </div>
+  );
+}
+
 // ── Edit state initializer ─────────────────────────────────────────────────────
 
 type EditState = {
@@ -141,6 +179,9 @@ type EditState = {
   notes: string;
   repeat_next_time: string;
   avoid_next_time: string;
+  screenshot_before: string;
+  screenshot_during: string;
+  screenshot_after: string;
 };
 
 function initEdit(trade: Trade): EditState {
@@ -170,6 +211,9 @@ function initEdit(trade: Trade): EditState {
     notes: trade.notes ?? "",
     repeat_next_time: trade.repeat_next_time ?? "",
     avoid_next_time: trade.avoid_next_time ?? "",
+    screenshot_before: trade.screenshot_before ?? "",
+    screenshot_during: trade.screenshot_during ?? "",
+    screenshot_after: trade.screenshot_after ?? "",
   };
 }
 
@@ -195,6 +239,9 @@ function editToPatch(state: EditState): Partial<Trade> {
   patch.notes = state.notes;
   patch.repeat_next_time = state.repeat_next_time;
   patch.avoid_next_time = state.avoid_next_time;
+  patch.screenshot_before = state.screenshot_before.trim();
+  patch.screenshot_during = state.screenshot_during.trim();
+  patch.screenshot_after = state.screenshot_after.trim();
 
   // Booleans: always send
   if (state.followed_plan !== null) patch.followed_plan = state.followed_plan;
@@ -470,6 +517,32 @@ export default function TradeDetailPage({ params }: { params: { tradeId: string 
             </div>
           </div>
 
+          {/* Charts & Screenshots */}
+          <div>
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Charts & Screenshots</p>
+            <p className="text-xs text-gray-600 mb-3 italic">Paste a URL to any chart image or link (TradingView, Google Drive, Imgur, etc.)</p>
+            <div className="space-y-3">
+              <TextInput
+                label="Before Entry — setup / confluence chart"
+                value={editState.screenshot_before}
+                onChange={(v) => set("screenshot_before", v)}
+                placeholder="https://…"
+              />
+              <TextInput
+                label="At Entry / During — execution screenshot"
+                value={editState.screenshot_during}
+                onChange={(v) => set("screenshot_during", v)}
+                placeholder="https://…"
+              />
+              <TextInput
+                label="After Exit — outcome chart"
+                value={editState.screenshot_after}
+                onChange={(v) => set("screenshot_after", v)}
+                placeholder="https://…"
+              />
+            </div>
+          </div>
+
           {/* Save / Cancel */}
           {saveError && (
             <div className="bg-red-900/40 border border-red-700 text-red-300 text-xs px-3 py-2 rounded">
@@ -575,6 +648,18 @@ export default function TradeDetailPage({ params }: { params: { tradeId: string 
               {trade.notes && <Field label="Notes" value={<p className="whitespace-pre-wrap">{trade.notes}</p>} />}
             </dl>
           </section>
+
+          {/* Charts & Screenshots */}
+          {(trade.screenshot_before || trade.screenshot_during || trade.screenshot_after) && (
+            <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+              <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-4">Charts & Screenshots</h2>
+              <div className="space-y-5">
+                <ScreenshotSlot label="Before Entry" url={trade.screenshot_before} />
+                <ScreenshotSlot label="At Entry / During" url={trade.screenshot_during} />
+                <ScreenshotSlot label="After Exit" url={trade.screenshot_after} />
+              </div>
+            </section>
+          )}
 
           {/* Linked plan */}
           <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
