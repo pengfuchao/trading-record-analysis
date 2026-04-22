@@ -41,7 +41,7 @@ platforms:
 asset_class_rules:
   forex:
     - "^(EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY|SGD|HKD|NOK|SEK|DKK|MXN|ZAR|TRY){2}.*"
-    - "^[A-Z]{6}$"
+    - "^(?!XAU|XAG)[A-Z]{6}$"
   gold:
     - "^XAU.*"
     - "^GOLD.*"

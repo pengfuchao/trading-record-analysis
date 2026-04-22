@@ -22,12 +22,13 @@ from src.main.python.services.trade_repository import TradeRepository
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def engine():
-    """One SQLite in-memory engine for the whole test session."""
+    """Fresh SQLite in-memory engine per test — prevents data bleed between tests."""
     eng = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     Base.metadata.create_all(eng)
-    return eng
+    yield eng
+    eng.dispose()
 
 
 @pytest.fixture()

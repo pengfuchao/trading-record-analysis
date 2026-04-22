@@ -81,21 +81,31 @@ class TestCalcNetPnl:
 
 
 class TestCalcActualR:
-    def test_returns_float_for_valid_inputs(self, calc):
-        result = calc.calc_actual_r(52.0, 1.08500, 1.08000, 0.10, Direction.LONG)
-        assert isinstance(result, float)
+    def test_returns_float_for_valid_long(self, calc):
+        # LONG: entry=1.0850, exit=1.0900, SL=1.0800 → R = 0.005/0.005 = 1.0
+        result = calc.calc_actual_r(1.09000, 1.08500, 1.08000, Direction.LONG)
+        assert result == pytest.approx(1.0)
+
+    def test_returns_float_for_valid_short(self, calc):
+        # SHORT: entry=2000, exit=1950, SL=2025 → R = 50/25 = 2.0
+        result = calc.calc_actual_r(1950.0, 2000.0, 2025.0, Direction.SHORT)
+        assert result == pytest.approx(2.0)
 
     def test_no_stop_loss_returns_none(self, calc):
-        assert calc.calc_actual_r(52.0, 1.08500, None, 0.10, Direction.LONG) is None
+        assert calc.calc_actual_r(1.09000, 1.08500, None, Direction.LONG) is None
 
     def test_zero_stop_loss_returns_none(self, calc):
-        assert calc.calc_actual_r(52.0, 1.08500, 0.0, 0.10, Direction.LONG) is None
+        assert calc.calc_actual_r(1.09000, 1.08500, 0.0, Direction.LONG) is None
 
-    def test_zero_lot_size_returns_none(self, calc):
-        assert calc.calc_actual_r(52.0, 1.08500, 1.08000, 0.0, Direction.LONG) is None
+    def test_sl_equals_entry_returns_none(self, calc):
+        # SL distance = 0 → undefined R
+        assert calc.calc_actual_r(1.09000, 1.08500, 1.08500, Direction.LONG) is None
 
-    def test_none_gross_pnl_returns_none(self, calc):
-        assert calc.calc_actual_r(None, 1.08500, 1.08000, 0.10, Direction.LONG) is None
+    def test_none_exit_price_returns_none(self, calc):
+        assert calc.calc_actual_r(None, 1.08500, 1.08000, Direction.LONG) is None
+
+    def test_none_direction_returns_none(self, calc):
+        assert calc.calc_actual_r(1.09000, 1.08500, 1.08000, None) is None
 
 
 class TestCalcAssetClass:

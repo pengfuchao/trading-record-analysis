@@ -108,8 +108,8 @@ class TestProfitFactorExpectancy:
     def test_profit_factor_no_losses_returns_none(self):
         assert MC.profit_factor([10.0, 20.0], [W, W]) is None
 
-    def test_profit_factor_no_wins_returns_zero(self):
-        assert MC.profit_factor([-10.0, -20.0], [L, L]) == pytest.approx(0.0)
+    def test_profit_factor_no_wins_returns_none(self):
+        assert MC.profit_factor([-10.0, -20.0], [L, L]) is None
 
     def test_profit_factor_empty_returns_none(self):
         assert MC.profit_factor([], []) is None
