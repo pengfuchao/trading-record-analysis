@@ -509,6 +509,54 @@ class ExitDecompositionResponse(BaseModel):
     coaching_signals: List[str]
 
 
+# ── Entry vs exit quality decomposition ───────────────────────────────────────
+
+class EntryExitQualityResponse(BaseModel):
+    """
+    Entry-quality vs exit-quality diagnostic summary.
+
+    Exit-quality signals (early_exit_pct) are directly observable from price levels.
+    Entry-quality signals rely on self-reported flags — check flag_coverage_pct.
+    primary_diagnosis reflects the weight of available evidence, not certainty.
+    """
+    total_trades: int
+    classified_trades: int
+
+    # Exit-quality (directly observable)
+    wins_total: int
+    wins_with_tp_info: int
+    wins_hit_target: int
+    wins_before_target: int
+    early_exit_pct: Optional[float]
+
+    # Loss-side context
+    losses_total: int
+    stop_hit_count: int
+    manual_cut_count: int
+    stop_hit_pct_of_losses: Optional[float]
+
+    # Entry-quality (self-reported; check flag_coverage_pct)
+    entry_flagged_losses: int
+    entry_flagged_stop_hits: int
+    entry_flagged_stop_hit_pct: Optional[float]
+    flag_coverage_pct: float
+
+    # Specific flag counts
+    flag_early_entry: int
+    flag_chasing: int
+    flag_fomo: int
+    flag_plan_deviation_on_loss: int
+    flag_weak_setup_on_loss: int
+    flag_problem_analysis: int
+    flag_premature_exit: int
+    flag_moved_stop: int
+
+    # Diagnosis
+    primary_diagnosis: str      # "exit_discipline" | "entry_quality" | "mixed" | "unclear"
+    confidence: str             # "low" | "moderate" | "high"
+    coaching_signals: List[str]
+
+
 # ── Import history ─────────────────────────────────────────────────────────────
 
 class ImportHistoryEntry(BaseModel):

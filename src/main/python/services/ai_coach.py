@@ -88,6 +88,12 @@ class CoachingContext:
     exit_unclear_pct: Optional[float] = None         # % of classified trades that are unclear
     exit_decomp_signals: List[str] = field(default_factory=list)
 
+    # Entry vs exit quality diagnosis (populated when classified_trades >= 5)
+    entry_exit_diagnosis: Optional[str] = None       # "exit_discipline" | "entry_quality" | "mixed" | "unclear"
+    entry_exit_confidence: Optional[str] = None      # "low" | "moderate" | "high"
+    entry_exit_early_exit_pct: Optional[float] = None  # % of TP-eligible wins exited early
+    entry_exit_signals: List[str] = field(default_factory=list)
+
 
 # ── Generation result ──────────────────────────────────────────────────────────
 
@@ -291,6 +297,16 @@ class AICoachService:
             if tp_wins > 0:
                 exit_target_hit_pct = round(exit_report.target_hit.count / tp_wins * 100, 1)
 
+        # Entry vs exit quality
+        eq_report = AccountAnalytics.compute_entry_exit_quality(trades)
+        entry_exit_diagnosis: Optional[str] = None
+        entry_exit_confidence: Optional[str] = None
+        entry_exit_early_exit_pct: Optional[float] = None
+        if eq_report.classified_trades >= 5:
+            entry_exit_diagnosis = eq_report.primary_diagnosis
+            entry_exit_confidence = eq_report.confidence
+            entry_exit_early_exit_pct = eq_report.early_exit_pct
+
         return CoachingContext(
             from_date=from_date,
             to_date=to_date,
@@ -344,6 +360,10 @@ class AICoachService:
             exit_target_hit_pct=exit_target_hit_pct,
             exit_unclear_pct=exit_unclear_pct,
             exit_decomp_signals=exit_report.coaching_signals,
+            entry_exit_diagnosis=entry_exit_diagnosis,
+            entry_exit_confidence=entry_exit_confidence,
+            entry_exit_early_exit_pct=entry_exit_early_exit_pct,
+            entry_exit_signals=eq_report.coaching_signals if eq_report.classified_trades >= 5 else [],
         )
 
     # ── AI path ────────────────────────────────────────────────────────────────
@@ -561,6 +581,39 @@ class AICoachService:
                 f"Plan adherence is low at {ctx.followed_plan_rate}% — execution discipline "
                 f"is the main area to address. Trades taken outside the plan are the leading "
                 f"source of preventable losses."
+            )
+        elif (
+            ctx.entry_exit_diagnosis == "exit_discipline"
+            and ctx.entry_exit_confidence in ("moderate", "high")
+            and ctx.entry_exit_early_exit_pct is not None
+        ):
+            diagnosis = (
+                f"Exit discipline is the most visible source of underperformance in this dataset. "
+                f"{ctx.entry_exit_early_exit_pct:.0f}% of wins with a known target were exited "
+                f"before the target, leaving R on the table. "
+                f"Entries appear adequate — the gap is in holding winners to the planned level. "
+                f"Confidence: {ctx.entry_exit_confidence}."
+            )
+        elif (
+            ctx.entry_exit_diagnosis == "entry_quality"
+            and ctx.entry_exit_confidence == "moderate"
+        ):
+            diagnosis = (
+                "Entry quality or setup selection is a likely contributor to losses based on "
+                "self-reported journal flags. Most losses hit the full stop with entry-side flags "
+                "present (e.g., chasing, fomo, plan deviation, weak setup). "
+                "Review trade selection criteria and entry execution. "
+                "Note: this inference uses self-reported data and is moderate confidence."
+            )
+        elif (
+            ctx.entry_exit_diagnosis == "mixed"
+            and ctx.entry_exit_confidence in ("moderate", "high")
+        ):
+            diagnosis = (
+                "Both entry quality and exit discipline signals are present. "
+                "A portion of losses shows entry-side flags, while a significant share of wins "
+                "did not reach their target. Address exit discipline first (directly observable), "
+                "then review entry selection. Confidence in this split: moderate."
             )
         elif ctx.profit_factor is not None and ctx.profit_factor < 1.0:
             diagnosis = (
@@ -810,6 +863,21 @@ class AICoachService:
         else:
             rr_trend_block = "  not enough weekly buckets to determine trend (need >= 4)"
 
+        # ── Entry vs exit quality block ───────────────────────────────────────
+        eq_lines = []
+        if ctx.entry_exit_diagnosis is not None:
+            conf_str = f" (confidence: {ctx.entry_exit_confidence})" if ctx.entry_exit_confidence else ""
+            eq_lines.append(f"  Primary diagnosis: {ctx.entry_exit_diagnosis.upper()}{conf_str}")
+            if ctx.entry_exit_early_exit_pct is not None:
+                eq_lines.append(f"  Early exits (% of TP-eligible wins): {ctx.entry_exit_early_exit_pct:.0f}%")
+            for sig in ctx.entry_exit_signals:
+                eq_lines.append(f"  Signal: {sig}")
+            eq_lines.append(
+                "  IMPORTANT: entry quality inference uses self-reported flags and is conservative. "
+                "Exit quality (early exit %) is directly observable."
+            )
+        entry_exit_block = "\n".join(eq_lines) if eq_lines else "  not enough data (need >= 5 classified trades)"
+
         # ── Exit decomposition block ──────────────────────────────────────────
         exit_lines = []
         if ctx.exit_stop_hit_pct is not None:
@@ -848,6 +916,9 @@ PER-SETUP R:R EXECUTION:
 
 R:R REALIZATION TREND (weekly):
 {rr_trend_block}
+
+ENTRY vs EXIT QUALITY DIAGNOSIS:
+{entry_exit_block}
 
 EXIT OUTCOME DECOMPOSITION:
 {exit_block}

@@ -6,7 +6,7 @@ import {
   AreaChart, Area, LineChart, Line, ComposedChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { api, Account, ExitBucket, ExitDecompositionResponse, FtmoStatus, MT5SyncStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse, RRTrendBucket, RRTrendReportResponse, SegmentRow, SegmentAnalyticsResponse } from "@/lib/api";
+import { api, Account, EntryExitQualityResponse, ExitBucket, ExitDecompositionResponse, FtmoStatus, MT5SyncStatus, PlanAdherenceGroup, PlanAdherenceResponse, RRComparisonResponse, RRTrendBucket, RRTrendReportResponse, SegmentRow, SegmentAnalyticsResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import StatCard from "@/components/StatCard";
@@ -763,6 +763,151 @@ function Mt5FreshnessPill({ mt5Status }: { mt5Status: MT5SyncStatus }) {
   );
 }
 
+// ── Entry vs exit quality decomposition panel ──────────────────────────────────
+
+const DIAGNOSIS_STYLE: Record<string, { label: string; badge: string }> = {
+  exit_discipline: { label: "Exit Discipline",  badge: "bg-yellow-900/50 border-yellow-700/60 text-yellow-300" },
+  entry_quality:   { label: "Entry Quality",    badge: "bg-orange-900/50 border-orange-700/60 text-orange-300" },
+  mixed:           { label: "Mixed",            badge: "bg-purple-900/50 border-purple-700/60 text-purple-300" },
+  unclear:         { label: "Unclear",          badge: "bg-gray-800 border-gray-700 text-gray-400" },
+};
+const CONFIDENCE_COLOR: Record<string, string> = {
+  high: "text-green-400", moderate: "text-yellow-400", low: "text-gray-500",
+};
+
+function EntryExitQualityPanel({ data }: { data: EntryExitQualityResponse }) {
+  if (data.classified_trades === 0) return null;
+  const diag = DIAGNOSIS_STYLE[data.primary_diagnosis] ?? DIAGNOSIS_STYLE.unclear;
+  const confColor = CONFIDENCE_COLOR[data.confidence] ?? "text-gray-500";
+
+  return (
+    <div className="space-y-4">
+      {/* Diagnosis badge */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className={`text-xs font-semibold px-2.5 py-1 rounded border ${diag.badge}`}>
+          Primary issue: {diag.label}
+        </span>
+        <span className={`text-xs ${confColor}`}>
+          Confidence: {data.confidence}
+        </span>
+        <span className="text-xs text-gray-600">{data.classified_trades} classified trades</span>
+      </div>
+
+      {/* Two-column summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Exit quality card */}
+        <div className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 space-y-1.5">
+          <p className="text-xs font-semibold text-yellow-400 uppercase tracking-wide">Exit Quality</p>
+          <p className="text-xs text-gray-400">
+            Observable · based on exit price vs TP level
+          </p>
+          {data.wins_with_tp_info >= 3 ? (
+            <div className="space-y-1 pt-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400">Wins with TP info</span>
+                <span className="text-gray-200">{data.wins_with_tp_info}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400">Hit target</span>
+                <span className="text-green-400">{data.wins_hit_target}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400">Exited early</span>
+                <span className={data.wins_before_target > data.wins_hit_target ? "text-red-400" : "text-orange-400"}>
+                  {data.wins_before_target}
+                </span>
+              </div>
+              {data.early_exit_pct != null && (
+                <div className="flex justify-between text-xs font-semibold pt-0.5 border-t border-gray-700/50">
+                  <span className="text-gray-300">Early exit rate</span>
+                  <span className={data.early_exit_pct >= 50 ? "text-red-400" : data.early_exit_pct >= 40 ? "text-yellow-400" : "text-green-400"}>
+                    {data.early_exit_pct.toFixed(0)}%
+                  </span>
+                </div>
+              )}
+              {data.flag_premature_exit > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Premature exit (self-tagged)</span>
+                  <span className="text-orange-400">{data.flag_premature_exit}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-600 pt-1">
+              Needs ≥3 wins with TP level or linked plan with planned_rr.
+            </p>
+          )}
+        </div>
+
+        {/* Entry quality card */}
+        <div className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 space-y-1.5">
+          <p className="text-xs font-semibold text-orange-400 uppercase tracking-wide">Entry Quality</p>
+          <p className="text-xs text-gray-400">
+            Inferential · requires self-reported flags
+          </p>
+          <div className="space-y-1 pt-1">
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-400">Total losses</span>
+              <span className="text-gray-200">{data.losses_total}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-400">Full stop hits</span>
+              <span className="text-gray-200">
+                {data.stop_hit_count}
+                {data.stop_hit_pct_of_losses != null && (
+                  <span className="text-gray-500 ml-1">({data.stop_hit_pct_of_losses.toFixed(0)}%)</span>
+                )}
+              </span>
+            </div>
+            {data.stop_hit_count >= 3 && (
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400">Stop hits w/ entry flags</span>
+                <span className={data.entry_flagged_stop_hit_pct != null && data.entry_flagged_stop_hit_pct >= 25 ? "text-orange-400" : "text-gray-400"}>
+                  {data.entry_flagged_stop_hits}
+                  {data.entry_flagged_stop_hit_pct != null && (
+                    <span className="ml-1">({data.entry_flagged_stop_hit_pct.toFixed(0)}%)</span>
+                  )}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between text-xs pt-0.5 border-t border-gray-700/50">
+              <span className="text-gray-500">Flag coverage</span>
+              <span className={data.flag_coverage_pct < 20 ? "text-red-400" : "text-gray-400"}>
+                {data.flag_coverage_pct.toFixed(0)}%
+                {data.flag_coverage_pct < 20 && <span className="ml-1 text-gray-600">(sparse)</span>}
+              </span>
+            </div>
+          </div>
+          {/* Top entry flags */}
+          {(data.flag_early_entry + data.flag_chasing + data.flag_fomo + data.flag_plan_deviation_on_loss) > 0 && (
+            <div className="pt-1 space-y-0.5">
+              {data.flag_early_entry > 0 && <p className="text-xs text-gray-500">early_entry: {data.flag_early_entry}×</p>}
+              {data.flag_chasing > 0 && <p className="text-xs text-gray-500">chasing: {data.flag_chasing}×</p>}
+              {data.flag_fomo > 0 && <p className="text-xs text-gray-500">fomo: {data.flag_fomo}×</p>}
+              {data.flag_plan_deviation_on_loss > 0 && <p className="text-xs text-gray-500">plan deviation on loss: {data.flag_plan_deviation_on_loss}×</p>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Limitation note */}
+      <p className="text-xs text-gray-600">
+        Note: entry quality inference requires self-reported flags and is limited without MAE/MFE data.
+        A stop hit does not by itself indicate a bad entry.
+      </p>
+
+      {/* Coaching signals */}
+      {data.coaching_signals.length > 0 && (
+        <ul className="space-y-1">
+          {data.coaching_signals.map((s, i) => (
+            <li key={i} className="text-xs text-gray-400 pl-3 border-l-2 border-blue-800">{s}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ── Segment analytics table ────────────────────────────────────────────────────
 
 const EXIT_BUCKETS: { key: keyof ExitDecompositionResponse; label: string; color: string }[] = [
@@ -968,6 +1113,14 @@ export default function DashboardPage() {
   const { data: exitData } = useSWR(
     accountId ? `exit-decomp-${accountId}-${fromDate}-${toDate}` : null,
     () => api.getExitDecomposition(accountId, {
+      from_date: fromDate || undefined,
+      to_date: toDate || undefined,
+    })
+  );
+
+  const { data: entryExitData } = useSWR(
+    accountId ? `entry-exit-quality-${accountId}-${fromDate}-${toDate}` : null,
+    () => api.getEntryExitQuality(accountId, {
       from_date: fromDate || undefined,
       to_date: toDate || undefined,
     })
@@ -1265,6 +1418,16 @@ export default function DashboardPage() {
         <section className="bg-gray-900 border border-gray-800 rounded-lg p-4">
           <h2 className="text-sm font-semibold text-gray-300 mb-3">Exit Outcome Decomposition</h2>
           <ExitDecompositionPanel data={exitData} />
+        </section>
+      )}
+
+      {entryExitData && entryExitData.classified_trades >= 5 && (
+        <section className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <h2 className="text-sm font-semibold text-gray-300 mb-1">Entry vs Exit Quality</h2>
+          <p className="text-xs text-gray-600 mb-3">
+            Conservative diagnostic — exit signals are directly observable; entry signals require journal flags.
+          </p>
+          <EntryExitQualityPanel data={entryExitData} />
         </section>
       )}
     </div>

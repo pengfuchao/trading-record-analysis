@@ -209,6 +209,57 @@ class ExitDecompositionReport:
 
 
 @dataclass
+class EntryExitQualityReport:
+    """
+    Entry-quality vs exit-quality diagnostic summary.
+
+    IMPORTANT LIMITATIONS:
+    - Exit-quality signals (early_exit_pct) are directly observable from price levels.
+    - Entry-quality signals rely on self-reported flags which may be sparsely populated.
+    - Without MAE/MFE data, entry quality inference is conservative — a stop hit does
+      NOT by itself indicate a bad entry.
+    - primary_diagnosis and confidence reflect the weight of available evidence only.
+    """
+    total_trades: int
+    classified_trades: int                   # trades with actual_r_multiple set
+
+    # Exit-quality signals (directly observable from price levels)
+    wins_total: int
+    wins_with_tp_info: int                   # wins where target classification was possible
+    wins_hit_target: int                     # target_hit bucket
+    wins_before_target: int                  # exit_before_target bucket
+    early_exit_pct: Optional[float]          # wins_before_target / wins_with_tp_info * 100; None if <3 qualifying
+
+    # Loss-side context
+    losses_total: int
+    stop_hit_count: int                      # full stop losses (actual_r <= -0.85)
+    manual_cut_count: int                    # managed losses cut before stop
+    stop_hit_pct_of_losses: Optional[float]  # stop_hit_count / losses_total * 100
+
+    # Entry-quality signals (self-reported — check flag_coverage_pct for data quality)
+    entry_flagged_losses: int                # losses with ≥1 entry flag
+    entry_flagged_stop_hits: int             # stop-hit losses with ≥1 entry flag
+    entry_flagged_stop_hit_pct: Optional[float]  # of stop hits; None if stop_hits < 3
+    flag_coverage_pct: float                 # % of classified trades with any journal flag
+
+    # Specific flag counts (across all trades)
+    flag_early_entry: int
+    flag_chasing: int
+    flag_fomo: int
+    flag_plan_deviation_on_loss: int         # followed_plan=False AND result=LOSS
+    flag_weak_setup_on_loss: int             # is_a_plus_setup=False AND result=LOSS
+    flag_problem_analysis: int               # problem_source='analysis'
+    flag_premature_exit: int                 # premature_exit=True
+    flag_moved_stop: int                     # moved_stop=True
+
+    # Primary diagnosis (conservative — reflects available evidence, not certainty)
+    primary_diagnosis: str                   # "exit_discipline" | "entry_quality" | "mixed" | "unclear"
+    confidence: str                          # "low" | "moderate" | "high"
+
+    coaching_signals: List[str] = field(default_factory=list)
+
+
+@dataclass
 class AccountReport:
     # ── Identity ───────────────────────────────────────────────────────────
     account_id:          str

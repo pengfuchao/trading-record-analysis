@@ -849,3 +849,212 @@ class AccountAnalytics:
             unclear=unclear_b,
             coaching_signals=signals,
         )
+
+    # ── Entry vs exit quality decomposition ───────────────────────────────────
+
+    @staticmethod
+    def compute_entry_exit_quality(trades: List[Trade]) -> "EntryExitQualityReport":
+        """
+        Decompose whether underperformance is driven by entry quality or exit discipline.
+
+        Exit-quality signals are directly observable (early exits vs. target).
+        Entry-quality signals rely on self-reported flags — check flag_coverage_pct.
+        Without MAE/MFE data, entry quality inference is conservative.
+        """
+        from src.main.python.core.performance_summary import EntryExitQualityReport
+
+        classified = [t for t in trades if t.actual_r_multiple is not None]
+        total = len(classified)
+
+        _empty = EntryExitQualityReport(
+            total_trades=len(trades), classified_trades=0,
+            wins_total=0, wins_with_tp_info=0, wins_hit_target=0, wins_before_target=0,
+            early_exit_pct=None,
+            losses_total=0, stop_hit_count=0, manual_cut_count=0,
+            stop_hit_pct_of_losses=None,
+            entry_flagged_losses=0, entry_flagged_stop_hits=0,
+            entry_flagged_stop_hit_pct=None, flag_coverage_pct=0.0,
+            flag_early_entry=0, flag_chasing=0, flag_fomo=0,
+            flag_plan_deviation_on_loss=0, flag_weak_setup_on_loss=0,
+            flag_problem_analysis=0, flag_premature_exit=0, flag_moved_stop=0,
+            primary_diagnosis="unclear", confidence="low",
+        )
+        if total == 0:
+            return _empty
+
+        classified_exits = [(t, AccountAnalytics._classify_exit(t)) for t in classified]
+
+        # Win-side: exit quality (directly observable)
+        wins = [t for t, _ in classified_exits if t.result == TradeResult.WIN]
+        wins_hit_tgt = [t for t, ec in classified_exits if ec == "target_hit"]
+        wins_before_tgt = [t for t, ec in classified_exits if ec == "exit_before_target"]
+        wins_with_tp = wins_hit_tgt + wins_before_tgt
+        early_exit_pct: Optional[float] = None
+        if len(wins_with_tp) >= 3:
+            early_exit_pct = round(len(wins_before_tgt) / len(wins_with_tp) * 100, 1)
+
+        # Loss-side context
+        losses = [t for t, _ in classified_exits if t.result == TradeResult.LOSS]
+        stop_hits = [t for t, ec in classified_exits if ec == "stop_hit"]
+        manual_cuts = [t for t, ec in classified_exits if ec == "manual_cut"]
+        stop_hit_pct: Optional[float] = None
+        if losses:
+            stop_hit_pct = round(len(stop_hits) / len(losses) * 100, 1)
+
+        # Entry quality flags (self-reported — coverage may be low)
+        def _has_entry_flag(t: Trade) -> bool:
+            return bool(
+                t.early_entry
+                or t.chasing
+                or t.fomo
+                or t.emotional_trade
+                or t.revenge_trade
+                or t.followed_plan is False
+                or t.is_a_plus_setup is False
+                or t.problem_source == "analysis"
+            )
+
+        def _has_any_flag(t: Trade) -> bool:
+            return bool(
+                _has_entry_flag(t)
+                or t.premature_exit
+                or t.moved_stop
+                or t.held_loser_too_long
+            )
+
+        entry_flagged_losses = [t for t in losses if _has_entry_flag(t)]
+        entry_flagged_stop_hits = [t for t in stop_hits if _has_entry_flag(t)]
+
+        entry_flagged_stop_hit_pct: Optional[float] = None
+        if len(stop_hits) >= 3:
+            entry_flagged_stop_hit_pct = round(
+                len(entry_flagged_stop_hits) / len(stop_hits) * 100, 1
+            )
+
+        flag_coverage_pct = round(
+            sum(1 for t in classified if _has_any_flag(t)) / total * 100, 1
+        )
+
+        flag_early_entry = sum(1 for t in trades if t.early_entry is True)
+        flag_chasing = sum(1 for t in trades if t.chasing is True)
+        flag_fomo = sum(1 for t in trades if t.fomo is True)
+        flag_plan_dev = sum(1 for t in losses if t.followed_plan is False)
+        flag_weak_setup = sum(1 for t in losses if t.is_a_plus_setup is False)
+        flag_problem_analysis = sum(1 for t in trades if t.problem_source == "analysis")
+        flag_premature_exit = sum(1 for t in trades if t.premature_exit is True)
+        flag_moved_stop = sum(1 for t in trades if t.moved_stop is True)
+
+        # Primary diagnosis — conservative thresholds
+        exit_concern = early_exit_pct is not None and early_exit_pct >= 40
+        entry_concern = (
+            stop_hit_pct is not None and stop_hit_pct >= 60
+            and (
+                (entry_flagged_stop_hit_pct is not None and entry_flagged_stop_hit_pct >= 25)
+                or flag_plan_dev >= 2
+                or flag_problem_analysis >= 2
+            )
+        )
+
+        if total < 5:
+            primary_diagnosis = "unclear"
+            confidence = "low"
+        elif exit_concern and entry_concern:
+            primary_diagnosis = "mixed"
+            confidence = "moderate" if total >= 10 else "low"
+        elif exit_concern:
+            primary_diagnosis = "exit_discipline"
+            confidence = "high" if (total >= 10 and (early_exit_pct or 0) >= 50) else "moderate"
+        elif entry_concern:
+            primary_diagnosis = "entry_quality"
+            confidence = "moderate"
+        else:
+            primary_diagnosis = "unclear"
+            confidence = "low"
+
+        # Coaching signals
+        signals: List[str] = []
+
+        if flag_coverage_pct < 20 and total >= 5:
+            signals.append(
+                f"Journal flag coverage is {flag_coverage_pct:.0f}% of classified trades. "
+                f"Tagging early_entry, chasing, followed_plan, and problem_source will improve "
+                f"entry-side inference."
+            )
+
+        if early_exit_pct is not None:
+            n_early = len(wins_before_tgt)
+            n_tp = len(wins_with_tp)
+            if early_exit_pct >= 50:
+                signals.append(
+                    f"{early_exit_pct:.0f}% of wins with a known target were exited before the "
+                    f"target ({n_early}/{n_tp} trades). Exit discipline is the primary source of "
+                    f"R leakage visible in this data."
+                )
+            elif early_exit_pct >= 40:
+                signals.append(
+                    f"{early_exit_pct:.0f}% of wins with a known target were exited early "
+                    f"({n_early}/{n_tp} trades). Exit discipline is a visible drag on realized R."
+                )
+            elif early_exit_pct < 25 and len(wins_with_tp) >= 3:
+                signals.append(
+                    f"Most wins with a known target ({100 - early_exit_pct:.0f}%) reached it — "
+                    f"exit discipline on winners appears solid."
+                )
+
+        if stop_hit_pct is not None and stop_hit_pct >= 60:
+            n_sh = len(stop_hits)
+            n_l = len(losses)
+            if entry_concern and entry_flagged_stop_hit_pct is not None:
+                signals.append(
+                    f"{stop_hit_pct:.0f}% of losses hit the full stop ({n_sh}/{n_l}). "
+                    f"{entry_flagged_stop_hit_pct:.0f}% of those had entry quality flags — "
+                    f"entry selection or timing may be a contributing factor. "
+                    f"Note: without MAE data this remains inferential."
+                )
+            else:
+                signals.append(
+                    f"{stop_hit_pct:.0f}% of losses hit the full stop ({n_sh}/{n_l}). "
+                    f"Without max adverse excursion (MAE) data, it is not possible to determine "
+                    f"whether these are bad entries or good entries reversed by the market."
+                )
+
+        if flag_premature_exit >= 2:
+            signals.append(
+                f"{flag_premature_exit} trades self-tagged as premature exits — "
+                f"exit discipline is explicitly recognized in the trade journal."
+            )
+
+        if flag_moved_stop >= 2:
+            signals.append(
+                f"{flag_moved_stop} trades had a moved stop. "
+                f"Stop placement or management discipline may be a contributing factor."
+            )
+
+        return EntryExitQualityReport(
+            total_trades=len(trades),
+            classified_trades=total,
+            wins_total=len(wins),
+            wins_with_tp_info=len(wins_with_tp),
+            wins_hit_target=len(wins_hit_tgt),
+            wins_before_target=len(wins_before_tgt),
+            early_exit_pct=early_exit_pct,
+            losses_total=len(losses),
+            stop_hit_count=len(stop_hits),
+            manual_cut_count=len(manual_cuts),
+            stop_hit_pct_of_losses=stop_hit_pct,
+            entry_flagged_losses=len(entry_flagged_losses),
+            entry_flagged_stop_hits=len(entry_flagged_stop_hits),
+            entry_flagged_stop_hit_pct=entry_flagged_stop_hit_pct,
+            flag_coverage_pct=flag_coverage_pct,
+            flag_early_entry=flag_early_entry,
+            flag_chasing=flag_chasing,
+            flag_fomo=flag_fomo,
+            flag_plan_deviation_on_loss=flag_plan_dev,
+            flag_weak_setup_on_loss=flag_weak_setup,
+            flag_problem_analysis=flag_problem_analysis,
+            flag_premature_exit=flag_premature_exit,
+            flag_moved_stop=flag_moved_stop,
+            primary_diagnosis=primary_diagnosis,
+            confidence=confidence,
+            coaching_signals=signals,
+        )

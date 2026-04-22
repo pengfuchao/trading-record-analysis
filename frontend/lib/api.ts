@@ -263,6 +263,15 @@ export const api = {
     const qs = q.toString();
     return request<ExitDecompositionResponse>(`/accounts/${accountId}/exit-decomposition${qs ? `?${qs}` : ""}`);
   },
+
+  // Entry vs exit quality decomposition
+  getEntryExitQuality: (accountId: string, params?: DateRange) => {
+    const q = new URLSearchParams();
+    if (params?.from_date) q.set("from_date", params.from_date);
+    if (params?.to_date) q.set("to_date", endOfDay(params.to_date)!);
+    const qs = q.toString();
+    return request<EntryExitQualityResponse>(`/accounts/${accountId}/entry-exit-quality${qs ? `?${qs}` : ""}`);
+  },
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -865,6 +874,39 @@ export interface ExitDecompositionResponse {
   target_hit: ExitBucket;
   exit_before_target: ExitBucket;
   unclear: ExitBucket;
+  coaching_signals: string[];
+}
+
+export interface EntryExitQualityResponse {
+  total_trades: number;
+  classified_trades: number;
+  // Exit quality (directly observable)
+  wins_total: number;
+  wins_with_tp_info: number;
+  wins_hit_target: number;
+  wins_before_target: number;
+  early_exit_pct: number | null;
+  // Loss context
+  losses_total: number;
+  stop_hit_count: number;
+  manual_cut_count: number;
+  stop_hit_pct_of_losses: number | null;
+  // Entry quality (self-reported)
+  entry_flagged_losses: number;
+  entry_flagged_stop_hits: number;
+  entry_flagged_stop_hit_pct: number | null;
+  flag_coverage_pct: number;
+  flag_early_entry: number;
+  flag_chasing: number;
+  flag_fomo: number;
+  flag_plan_deviation_on_loss: number;
+  flag_weak_setup_on_loss: number;
+  flag_problem_analysis: number;
+  flag_premature_exit: number;
+  flag_moved_stop: number;
+  // Diagnosis
+  primary_diagnosis: "exit_discipline" | "entry_quality" | "mixed" | "unclear";
+  confidence: "low" | "moderate" | "high";
   coaching_signals: string[];
 }
 

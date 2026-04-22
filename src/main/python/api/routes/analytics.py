@@ -10,6 +10,7 @@ from src.main.python.api.dependencies import get_db, get_account_repo, get_trade
 from src.main.python.api.schemas.analytics import (
     AccountReportResponse,
     AnalyticsSummaryResponse,
+    EntryExitQualityResponse,
     ExitBucketResponse,
     ExitDecompositionResponse,
     FtmoCheckResponse,
@@ -361,6 +362,76 @@ def get_exit_decomposition(
         exit_before_target=_bucket(report.exit_before_target),
         unclear=_bucket(report.unclear),
         coaching_signals=report.coaching_signals,
+    )
+
+
+@router.get("/{account_id}/entry-exit-quality", response_model=EntryExitQualityResponse)
+def get_entry_exit_quality(
+    account_id: str,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Entry-quality vs exit-quality diagnostic.
+
+    Exit signals (early_exit_pct) are directly observable.
+    Entry signals rely on self-reported flags — check flag_coverage_pct.
+    Without MAE/MFE data, entry quality inference is conservative.
+    """
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    require_account(account_id, account_repo)
+    trades, _ = trade_repo.get_by_account_filtered(
+        account_id,
+        from_date=from_date,
+        to_date=to_date,
+        page_size=10_000,
+    )
+
+    # Enrich trades with planned_rr and planned_take_profit (needed for TP-level classification)
+    plan_repo = TradePlanRepository(db)
+    linked_plan_ids = {t.trade_plan_id for t in trades if t.trade_plan_id is not None}
+    if linked_plan_ids:
+        plans_by_id = {
+            p.plan_id: p
+            for p in plan_repo.list_by_account(account_id)
+            if p.plan_id in linked_plan_ids
+        }
+        for trade in trades:
+            if trade.trade_plan_id and trade.trade_plan_id in plans_by_id:
+                plan = plans_by_id[trade.trade_plan_id]
+                trade.planned_rr = plan.planned_rr
+                trade.planned_take_profit = plan.planned_take_profit
+
+    r = AccountAnalytics.compute_entry_exit_quality(trades)
+    return EntryExitQualityResponse(
+        total_trades=r.total_trades,
+        classified_trades=r.classified_trades,
+        wins_total=r.wins_total,
+        wins_with_tp_info=r.wins_with_tp_info,
+        wins_hit_target=r.wins_hit_target,
+        wins_before_target=r.wins_before_target,
+        early_exit_pct=r.early_exit_pct,
+        losses_total=r.losses_total,
+        stop_hit_count=r.stop_hit_count,
+        manual_cut_count=r.manual_cut_count,
+        stop_hit_pct_of_losses=r.stop_hit_pct_of_losses,
+        entry_flagged_losses=r.entry_flagged_losses,
+        entry_flagged_stop_hits=r.entry_flagged_stop_hits,
+        entry_flagged_stop_hit_pct=r.entry_flagged_stop_hit_pct,
+        flag_coverage_pct=r.flag_coverage_pct,
+        flag_early_entry=r.flag_early_entry,
+        flag_chasing=r.flag_chasing,
+        flag_fomo=r.flag_fomo,
+        flag_plan_deviation_on_loss=r.flag_plan_deviation_on_loss,
+        flag_weak_setup_on_loss=r.flag_weak_setup_on_loss,
+        flag_problem_analysis=r.flag_problem_analysis,
+        flag_premature_exit=r.flag_premature_exit,
+        flag_moved_stop=r.flag_moved_stop,
+        primary_diagnosis=r.primary_diagnosis,
+        confidence=r.confidence,
+        coaching_signals=r.coaching_signals,
     )
 
 
