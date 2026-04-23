@@ -307,6 +307,7 @@ export default function TradeDetailPage({ params }: { params: { tradeId: string 
   const activeFlags = flags.filter((f) => f.value === true);
 
   function openEdit() {
+    if (!trade) return;
     setEditState(initEdit(trade));
     setSaveError(null);
     setSaveSuccess(false);
