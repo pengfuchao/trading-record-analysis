@@ -90,8 +90,8 @@ uvicorn api.app:app --reload
 cd frontend
 npm install
 
-# Create .env.local
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1" > .env.local
+# Create .env.local — NEXT_PUBLIC_API_URL is the backend origin only (/api/v1 is appended by the client)
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
 
 npm run dev
 # App at http://localhost:3000
@@ -134,7 +134,7 @@ Migrations run automatically on backend startup before the server accepts traffi
 
 | Service | Image | Port |
 |---|---|---|
-| `db` | `postgres:15` | 5432 (internal) |
+| `db` | `postgres:15` | 5432 (host + internal) |
 | `backend` | built from `Dockerfile` | 8000 |
 | `frontend` | built from `frontend/Dockerfile` | 3000 |
 
@@ -146,19 +146,60 @@ docker compose up --build
 
 ### Deploying to a remote host
 
-The frontend `NEXT_PUBLIC_API_URL` is baked in at build time. For a remote server, pass the public backend URL as a build arg:
+`NEXT_PUBLIC_API_URL` is baked in at build time and must be the backend **origin only** (no `/api/v1` suffix — the API client always appends it). For a remote server:
 
 ```bash
-docker compose build --build-arg NEXT_PUBLIC_API_URL=https://your-backend.example.com/api/v1 frontend
+docker compose build --build-arg NEXT_PUBLIC_API_URL=https://your-backend.example.com frontend
 ```
 
 Or override it in a `docker-compose.override.yml`.
 
-### MT5 live sync in Docker
+### MT5 live sync — local Windows backend + Docker Postgres
 
-**MT5 sync does not work inside containers.** The `MetaTrader5` Python package is Windows-only and requires a locally running MT5 terminal. In the Docker backend, MT5 sync requests will return an error ("MetaTrader5 not available") — no data is corrupted.
+**MT5 sync does not work inside containers.** The `MetaTrader5` Python package is Windows-only and requires a locally running MT5 terminal. In the Docker backend, MT5 sync requests return an error ("MetaTrader5 not available") — no data is corrupted.
 
-If you run MT5 sync, run the backend **natively on Windows** alongside a running MT5 terminal. See the MT5 Live Sync section below.
+For live MT5 sync, run the backend **natively on Windows** while keeping the Docker Postgres database running. The `db` service publishes port 5432 to the host, so the local backend can connect to the same database.
+
+**Two-mode setup:**
+
+| Mode | Frontend | Backend | Database |
+|---|---|---|---|
+| **Full Docker stack** | Docker container (port 3000) | Docker container (port 8000) | Docker container (port 5432) |
+| **Local MT5 sync** | Docker container (port 3000) | Native Windows Python | Docker container (port 5432) |
+
+**Running the local Windows backend (PowerShell):**
+
+```powershell
+# From repo root — keep the Docker stack running (for the db and frontend)
+# but run the backend natively so MetaTrader5 works
+
+# 1. Activate your Python venv
+.\venv\Scripts\activate
+
+# 2. Ensure .env has the Docker Postgres credentials:
+#    DATABASE_URL=postgresql+psycopg2://trading:trading@localhost:5432/trading_journal
+#    (other vars — API keys, Telegram, MT5 passwords — as needed)
+
+# 3. Run migrations (only needed after a schema change)
+$env:PYTHONPATH = "."
+python -m alembic upgrade head
+
+# 4. Start the backend
+python -m uvicorn src.main.python.api.app:app --reload --host 0.0.0.0 --port 8000
+```
+
+> **Note:** When the local backend is running on port 8000, stop the Docker `backend` service first
+> to avoid a port conflict:
+> ```bash
+> docker compose stop backend
+> ```
+> The `db` and `frontend` containers can keep running.
+
+**Verify the local backend is DB-connected:**
+```powershell
+Invoke-WebRequest http://localhost:8000/ready | Select-Object -ExpandProperty Content
+# Expected: {"status":"ready","database":"connected"}
+```
 
 ## Core Workflow
 

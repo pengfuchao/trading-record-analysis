@@ -9,6 +9,10 @@ services:
       POSTGRES_DB: trading_journal
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # Publish to host so a local Windows backend (e.g. for MT5 live sync)
+    # can connect via localhost:5432 using the same credentials.
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U trading -d trading_journal"]
       interval: 5s
