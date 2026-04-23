@@ -46,7 +46,7 @@ function EquityCurveChart({ equity, dates }: { equity: number[]; dates: string[]
           tick={{ fontSize: 10, fill: "#6b7280" }}
           domain={[min - padding, max + padding]}
           width={60}
-          tickFormatter={(v: number) => fmtPnl(v).replace(/[\s$]/g, "")}
+          tickFormatter={(v) => fmtPnl(typeof v === "number" ? v : 0).replace(/[\s$]/g, "")}
         />
         <Tooltip
           contentStyle={{ background: "#111827", border: "1px solid #374151", fontSize: 12 }}
@@ -85,7 +85,7 @@ function DrawdownChart({ drawdown, dates }: { drawdown: number[]; dates: string[
           tick={{ fontSize: 10, fill: "#6b7280" }}
           domain={[minDD * 1.1, 0]}
           width={60}
-          tickFormatter={(v: number) => fmtPnl(v).replace(/[\s$]/g, "")}
+          tickFormatter={(v) => fmtPnl(typeof v === "number" ? v : 0).replace(/[\s$]/g, "")}
         />
         <ReferenceLine y={0} stroke="#6b7280" strokeDasharray="3 3" />
         <Tooltip
@@ -648,7 +648,7 @@ function BehavioralTrendChart({ report }: { report: BehavioralTrendReportRespons
           <YAxis
             tick={{ fontSize: 10, fill: "#6b7280" }}
             domain={[0, 100]}
-            tickFormatter={(v: number) => `${v}%`}
+            tickFormatter={(v) => `${typeof v === "number" ? v : 0}%`}
             width={36}
           />
           <Tooltip
@@ -664,9 +664,9 @@ function BehavioralTrendChart({ report }: { report: BehavioralTrendReportRespons
               const key = String(name ?? "");
               return [`${pct}%`, labels[key] ?? key];
             }}
-            labelFormatter={(label: string, payload) => {
+            labelFormatter={(label, payload) => {
               const n = payload?.[0]?.payload?.n;
-              return `${label}${n != null ? `  (n=${n})` : ""}`;
+              return `${String(label)}${n != null ? `  (n=${n})` : ""}`;
             }}
           />
           <Line type="monotone" dataKey="win_rate" stroke="#34d399" strokeWidth={2} dot={{ r: 3 }} connectNulls />
@@ -746,7 +746,7 @@ function RRTrendChart({ report }: { report: RRTrendReportResponse }) {
           <YAxis
             tick={{ fontSize: 10, fill: "#6b7280" }}
             domain={[0, 120]}
-            tickFormatter={(v: number) => `${v}%`}
+            tickFormatter={(v) => `${typeof v === "number" ? v : 0}%`}
             width={36}
           />
           <ReferenceLine y={100} stroke="#6b7280" strokeDasharray="4 2" label={{ value: "100%", position: "right", fontSize: 9, fill: "#6b7280" }} />
@@ -756,12 +756,13 @@ function RRTrendChart({ report }: { report: RRTrendReportResponse }) {
               if (name === "pct") return [typeof value === "number" ? `${value.toFixed(0)}%` : "—", "Realization"];
               return [value, name];
             }}
-            labelFormatter={(label: string, payload) => {
+            labelFormatter={(label, payload) => {
+              const lbl = String(label);
               if (payload && payload[0]) {
                 const d = payload[0].payload;
-                return `${label}  (n=${d.n}${d.lowSample ? "*" : ""})\nPlanned: ${d.planned?.toFixed(2)}R → Realized: ${d.actual > 0 ? "+" : ""}${d.actual?.toFixed(2)}R`;
+                return `${lbl}  (n=${d.n}${d.lowSample ? "*" : ""})\nPlanned: ${d.planned?.toFixed(2)}R → Realized: ${d.actual > 0 ? "+" : ""}${d.actual?.toFixed(2)}R`;
               }
-              return label;
+              return lbl;
             }}
           />
           <Bar dataKey="pct" name="pct" radius={[2, 2, 0, 0]}>
