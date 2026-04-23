@@ -2,7 +2,12 @@
 set -e
 
 echo "[entrypoint] Running database migrations..."
-alembic upgrade head
+# PYTHONPATH=/app causes the local alembic/ migration directory to shadow the
+# installed alembic package (ModuleNotFoundError: No module named 'alembic.config').
+# Clearing PYTHONPATH for this one command lets the CLI find the real package in
+# site-packages. alembic/env.py then adds /app back to sys.path itself so the
+# src.main.python.* model imports still work during the migration run.
+PYTHONPATH="" alembic upgrade head
 
 echo "[entrypoint] Starting API server..."
 exec python -m uvicorn src.main.python.api.app:app \
