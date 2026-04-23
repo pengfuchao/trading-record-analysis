@@ -1,4 +1,7 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+// NEXT_PUBLIC_API_URL is the backend *origin* (e.g. http://localhost:8000).
+// /api/v1 is always appended here so it is enforced regardless of what the
+// env var contains — avoids silent 404s when the suffix is accidentally omitted.
+const BASE = `${(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/+$/, "")}/api/v1`;
 
 /** Append T23:59:59 so a plain YYYY-MM-DD to_date includes all trades on that day. */
 function endOfDay(date: string | undefined): string | undefined {

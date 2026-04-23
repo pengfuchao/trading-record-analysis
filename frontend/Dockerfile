@@ -8,9 +8,9 @@ RUN npm ci
 COPY . .
 
 # NEXT_PUBLIC_API_URL is baked in at build time by Next.js.
-# Pass the URL where your browser can reach the backend (not the container name).
+# Pass the backend *origin* — /api/v1 is always appended by the API client.
 # Default works for local Docker where port 8000 is published to localhost.
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN npm run build

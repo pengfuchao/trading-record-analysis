@@ -38,10 +38,11 @@ services:
   frontend:
     build:
       context: ./frontend
-      # NEXT_PUBLIC_API_URL must point to where the *browser* can reach the backend.
-      # With default port mapping, localhost:8000 works for local Docker.
+      # NEXT_PUBLIC_API_URL is the backend *origin* (no /api/v1 suffix —
+      # the API client always appends it). Must be reachable from the browser,
+      # not the Docker network name. localhost:8000 works with default port mapping.
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     restart: unless-stopped
     depends_on:
       backend:
