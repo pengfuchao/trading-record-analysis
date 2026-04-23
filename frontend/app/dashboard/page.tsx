@@ -50,7 +50,7 @@ function EquityCurveChart({ equity, dates }: { equity: number[]; dates: string[]
         />
         <Tooltip
           contentStyle={{ background: "#111827", border: "1px solid #374151", fontSize: 12 }}
-          formatter={(v: number) => [fmtPnl(v), "Balance"]}
+          formatter={(v) => [fmtPnl(typeof v === "number" ? v : 0), "Balance"]}
         />
         <Area
           type="monotone"
@@ -90,7 +90,7 @@ function DrawdownChart({ drawdown, dates }: { drawdown: number[]; dates: string[
         <ReferenceLine y={0} stroke="#6b7280" strokeDasharray="3 3" />
         <Tooltip
           contentStyle={{ background: "#111827", border: "1px solid #374151", fontSize: 12 }}
-          formatter={(v: number) => [fmtPnl(v), "Drawdown"]}
+          formatter={(v) => [fmtPnl(typeof v === "number" ? v : 0), "Drawdown"]}
         />
         <Area
           type="monotone"
@@ -653,14 +653,16 @@ function BehavioralTrendChart({ report }: { report: BehavioralTrendReportRespons
           />
           <Tooltip
             contentStyle={{ background: "#111827", border: "1px solid #374151", fontSize: 11 }}
-            formatter={(value: number, name: string) => {
+            formatter={(value, name) => {
               const labels: Record<string, string> = {
                 win_rate: "Win Rate",
                 mistake_rate: "Mistake Rate",
                 followed_plan_rate: "Followed Plan",
                 plan_link_rate: "Plan Linked",
               };
-              return [`${value}%`, labels[name] ?? name];
+              const pct = typeof value === "number" ? value : 0;
+              const key = String(name ?? "");
+              return [`${pct}%`, labels[key] ?? key];
             }}
             labelFormatter={(label: string, payload) => {
               const n = payload?.[0]?.payload?.n;
@@ -750,8 +752,8 @@ function RRTrendChart({ report }: { report: RRTrendReportResponse }) {
           <ReferenceLine y={100} stroke="#6b7280" strokeDasharray="4 2" label={{ value: "100%", position: "right", fontSize: 9, fill: "#6b7280" }} />
           <Tooltip
             contentStyle={{ background: "#111827", border: "1px solid #374151", fontSize: 11 }}
-            formatter={(value: number, name: string) => {
-              if (name === "pct") return [`${value?.toFixed(0)}%`, "Realization"];
+            formatter={(value, name) => {
+              if (name === "pct") return [typeof value === "number" ? `${value.toFixed(0)}%` : "—", "Realization"];
               return [value, name];
             }}
             labelFormatter={(label: string, payload) => {
