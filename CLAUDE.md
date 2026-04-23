@@ -28,8 +28,8 @@ Before starting ANY task, respond with:
 ## Commands
 
 ```bash
-# Start backend (from repo root)
-cd src/main/python && uvicorn api.app:app --reload
+# Start backend (run from repo root — src.main.python.* imports and resource paths require it)
+python -m uvicorn src.main.python.api.app:app --reload
 # API at http://localhost:8000  |  Docs at http://localhost:8000/docs
 
 # Run all tests
@@ -50,6 +50,13 @@ cd frontend && npm run dev
 
 # Push to GitHub
 git push origin main
+
+# Docker (full stack)
+docker compose up --build
+
+# Health / readiness checks
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
 ```
 
 ---

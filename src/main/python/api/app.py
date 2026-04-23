@@ -9,21 +9,45 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.main.python.api.routes import accounts, analytics, coaching, imports, mistakes, setups, trades
 from src.main.python.api.routes.daily_plans import plans_router, reviews_router
+from src.main.python.api.routes.health import router as health_router
 from src.main.python.api.routes.mt5_sync import router as mt5_sync_router
 from src.main.python.api.routes.telegram import router as telegram_router
 from src.main.python.api.routes.trade_plans import router as trade_plans_router
 from src.main.python.services.mt5_scheduler import get_scheduler
+from src.main.python.utils.logging_utils import configure_logging, get_logger
+
+
+def _safe_db_url(url: str) -> str:
+    """Strip credentials from DATABASE_URL for safe logging."""
+    if not url:
+        return "(not set)"
+    if "@" in url:
+        return url.split("@", 1)[-1]  # e.g., "localhost:5432/trading_journal"
+    return url.split("://", 1)[-1][:60]  # SQLite: show file path
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Start background scheduler on startup; stop it cleanly on shutdown."""
+    configure_logging(level=os.environ.get("LOG_LEVEL", "INFO"))
+    logger = get_logger(__name__)
+
+    db_display = _safe_db_url(os.environ.get("DATABASE_URL", ""))
+    cors_origins = os.environ.get("CORS_ORIGINS", "*")
+    logger.info("Trading Journal API starting up")
+    logger.info("  database : %s", db_display)
+    logger.info("  CORS     : %s", cors_origins)
+    logger.info("  log level: %s", os.environ.get("LOG_LEVEL", "INFO"))
+
     scheduler = get_scheduler()
     scheduler.start()
+    logger.info("MT5 background scheduler started")
+
     try:
         yield
     finally:
+        logger.info("Trading Journal API shutting down")
         scheduler.stop()
+        logger.info("MT5 background scheduler stopped")
 
 
 def create_app() -> FastAPI:
@@ -34,7 +58,7 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
     )
 
-    # CORS — configure CORS_ORIGINS env var for production (comma-separated)
+    # CORS — set CORS_ORIGINS env var for production (comma-separated)
     origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",")]
     app.add_middleware(
         CORSMiddleware,
@@ -43,6 +67,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Ops endpoints at root (no /api/v1 prefix)
+    app.include_router(health_router)
 
     app.include_router(accounts.router, prefix="/api/v1")
     app.include_router(trades.router,   prefix="/api/v1")
@@ -61,5 +88,5 @@ def create_app() -> FastAPI:
     return app
 
 
-# Module-level instance for: uvicorn src.main.python.api.app:app
+# Module-level instance for: python -m uvicorn src.main.python.api.app:app
 app = create_app()

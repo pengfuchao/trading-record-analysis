@@ -1,0 +1,53 @@
+services:
+
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trading
+      POSTGRES_PASSWORD: trading
+      POSTGRES_DB: trading_journal
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trading"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    # DATABASE_URL overrides any value in .env for the Compose network.
+    # All other vars (ANTHROPIC_API_KEY, TELEGRAM_*, MT5_*, LOG_LEVEL) come from .env.
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://trading:trading@db:5432/trading_journal
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      # NEXT_PUBLIC_API_URL must point to where the *browser* can reach the backend.
+      # With default port mapping, localhost:8000 works for local Docker.
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

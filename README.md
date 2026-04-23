@@ -102,12 +102,63 @@ npm run dev
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `CORS_ORIGINS` | No | Comma-separated allowed origins (default: `*`, unsafe for public deploys) |
 | `ANTHROPIC_API_KEY` | No | AI coaching — falls back to rule-based without it |
-| `CORS_ORIGINS` | No | Allowed origins for CORS (default: localhost:3000) |
+| `LOG_LEVEL` | No | Log verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` (default: `INFO`) |
 | `TELEGRAM_BOT_TOKEN` | No | Telegram push notifications |
 | `TELEGRAM_CHAT_ID` | No | Telegram target chat (for alerts and webhook auth) |
 | `TELEGRAM_ENABLED` | No | Set `false` to silence without removing tokens |
 | `MT5_<ACCOUNT_ID_UPPER>_PASSWORD` | No | MT5 account password (never stored in DB) |
+
+See `.env.example` for the full annotated reference.
+
+---
+
+## Docker
+
+### Quick start (full stack)
+
+```bash
+cp .env.example .env
+# Edit .env — set ANTHROPIC_API_KEY, TELEGRAM_*, and any MT5 passwords you need.
+# DATABASE_URL is automatically overridden by docker-compose to point at the Compose db service.
+
+docker compose up --build
+# Backend: http://localhost:8000 | API docs: http://localhost:8000/docs
+# Frontend: http://localhost:3000
+```
+
+Migrations run automatically on backend startup before the server accepts traffic.
+
+### What's in the Compose stack
+
+| Service | Image | Port |
+|---|---|---|
+| `db` | `postgres:15` | 5432 (internal) |
+| `backend` | built from `Dockerfile` | 8000 |
+| `frontend` | built from `frontend/Dockerfile` | 3000 |
+
+Database data persists in a named Docker volume `pgdata`. To reset the database:
+```bash
+docker compose down -v   # WARNING: destroys all data
+docker compose up --build
+```
+
+### Deploying to a remote host
+
+The frontend `NEXT_PUBLIC_API_URL` is baked in at build time. For a remote server, pass the public backend URL as a build arg:
+
+```bash
+docker compose build --build-arg NEXT_PUBLIC_API_URL=https://your-backend.example.com/api/v1 frontend
+```
+
+Or override it in a `docker-compose.override.yml`.
+
+### MT5 live sync in Docker
+
+**MT5 sync does not work inside containers.** The `MetaTrader5` Python package is Windows-only and requires a locally running MT5 terminal. In the Docker backend, MT5 sync requests will return an error ("MetaTrader5 not available") — no data is corrupted.
+
+If you run MT5 sync, run the backend **natively on Windows** alongside a running MT5 terminal. See the MT5 Live Sync section below.
 
 ## Core Workflow
 
@@ -224,13 +275,22 @@ The webhook rejects messages from any chat_id that doesn't match `TELEGRAM_CHAT_
 | Limitation | Notes |
 |---|---|
 | No authentication | Single-user, local deployment only. Do not expose publicly without adding auth. |
-| MT5 requires Windows | MetaTrader5 Python package is Windows-only. Linux/Mac: sync returns an error, no data is affected. |
+| MT5 requires Windows | MetaTrader5 Python package is Windows-only. Docker containers run on Linux — MT5 sync will return an error inside containers. Run the backend natively on Windows for live sync. |
+| MT5 sync is single-process | Overlap protection is in-memory only. Multi-process (Gunicorn multi-worker) deployments would lose this protection. Use `--workers 1`. |
 | Screenshot upload not implemented | `screenshot_examples` field exists in the schema but no image storage is wired up. |
 | Telegram NLP deferred | `/journal` requires exact trade UUID. No broker ticket lookup, no multi-step flows. |
 | FTMO alert dedup is in-memory | Server restart clears dedup state; first check after restart will re-fire the current status alert. |
 | Setup Library not auto-populated | New setup names from imports don't create Library entries automatically. |
-| APScheduler is single-process | Background polling overlap protection is in-memory. Multi-process deployments would need an external lock. |
 | Coaching covers closed trades only | No open position awareness in coaching context. |
+
+## CI
+
+GitHub Actions runs on every push and pull request to `main`:
+
+- **Backend tests** — full pytest suite (`src/test/unit/` + `src/test/integration/`) against SQLite
+- **Frontend typecheck** — `tsc --noEmit` on the Next.js codebase
+
+See `.github/workflows/ci.yml`.
 
 ---
 
