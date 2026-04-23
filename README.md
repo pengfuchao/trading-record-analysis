@@ -60,27 +60,28 @@ A full-stack web app that gives you a structured way to:
 ### Prerequisites
 
 - Python 3.11+
-- Node.js 18+
-- PostgreSQL database (local or Supabase)
+- Node.js 20+
+- PostgreSQL database (local or Docker — see Docker section below)
 
 ### Backend
 
 ```bash
-# From repo root
+# From repo root (IMPORTANT: all commands must run from repo root — imports require it)
 python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
-pip install -r src/main/python/requirements.txt
+source venv/bin/activate          # Windows: .\venv\Scripts\activate
+
+# requirements.txt is at the repo root (not inside src/)
+pip install -r requirements.txt
 
 # Create .env (see .env.example for all variables)
 cp .env.example .env
 # Edit .env: set DATABASE_URL at minimum
 
-# Run migrations
-alembic upgrade head
+# Run migrations (from repo root)
+python -m alembic upgrade head
 
-# Start server
-cd src/main/python
-uvicorn api.app:app --reload
+# Start server (from repo root — do NOT cd into src/ first)
+python -m uvicorn src.main.python.api.app:app --reload
 # API at http://localhost:8000 | Docs at http://localhost:8000/docs
 ```
 

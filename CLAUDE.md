@@ -25,6 +25,102 @@ Before starting ANY task, respond with:
 
 ---
 
+## Project Status (as of 2026-04-24)
+
+### Maturity: 7 / 10 — Feature-complete, operationally solid, some polish gaps remain
+
+### Completed Phases
+All 6 build phases are done:
+- **Phase 1** — Core backend (accounts, trades, CSV import, analytics, PostgreSQL)
+- **Phase 2** — Frontend (Next.js 14, all pages wired to real API data)
+- **Phase 3** — Coaching, MT5 sync, Telegram
+- **Phase 4** — Trade plans, daily plans/reviews, plan-adherence analytics
+- **Phase 5** — Advanced analytics (R:R trend, behavioral trend, exit decomposition, entry/exit quality)
+- **Phase 6** — Deployment hardening (Docker Compose, alembic shadow-package fix, port 5432 published, API base URL fix, TypeScript build errors resolved)
+
+### Next Phase: Phase 7 — Ops Hardening + Onboarding Fix
+Key tasks: fix broken README backend install instructions (wrong requirements.txt path, wrong uvicorn cwd), write `start-local-backend.ps1`/`.sh` scripts, replace 4 `alert()` calls in `app/daily/page.tsx` with inline banners, add onboarding prompt on empty dashboard, fix `datetime.utcnow()` → `datetime.now(timezone.utc)` deprecation, document `pg_dump` backup flow.
+
+### Strongest Modules
+1. `core/account_analytics.py` + `core/metrics_calculator.py` — 15+ metric families, no stubs
+2. `services/ai_coach.py` — real Anthropic API with genuine 300-line rule-based fallback
+3. `api/routes/` — full CRUD on all entities; 50+ endpoints; analytics is read-only/extensive
+4. Frontend `app/dashboard/page.tsx` — 15 wired panels, no fake data
+
+### Known Weak / Rough Areas
+- **Zero HTTP route tests** — the API surface has no regression protection at the HTTP layer; only core logic is tested
+- `datetime.utcnow()` used in `models/db_models.py` and `services/mt5_scheduler.py` — deprecated in Python 3.12+
+- 4 `alert()` calls in `app/daily/page.tsx` (delete/create error paths) — inconsistent with every other page which uses inline banners
+- CI tests against SQLite only — Postgres-specific issues can slip through
+- No `pg_dump` backup story — `docker compose down -v` destroys all data
+
+---
+
+## Operating Modes
+
+### Mode 1: Docker Full Stack (normal use)
+The entire stack runs in Docker. Use this for day-to-day journaling, analytics, and coaching.
+
+```bash
+# Start
+cp .env.example .env   # only first time; set ANTHROPIC_API_KEY etc.
+docker compose up -d   # or with --build after code changes
+
+# Access
+# Frontend:  http://localhost:3000
+# Backend:   http://localhost:8000
+# API docs:  http://localhost:8000/docs
+```
+
+The Docker backend **cannot** do MT5 live sync — `MetaTrader5` is Windows-only and not installed in the container. MT5 sync routes return an error gracefully; no data is corrupted.
+
+### Mode 2: Local Windows Backend + Docker Postgres (MT5 sync)
+Use this when you need MT5 live sync. The Docker `db` service (Postgres on port 5432) stays running; the Docker backend is stopped to free port 8000; a native Windows Python process runs the backend instead.
+
+```powershell
+# 1. Keep db + frontend running; stop only the backend container
+docker compose stop backend
+
+# 2. Activate your venv from repo root
+.\venv\Scripts\activate
+
+# 3. Ensure .env has Docker Postgres credentials:
+#    DATABASE_URL=postgresql+psycopg2://trading:trading@localhost:5432/trading_journal
+
+# 4. Run migrations if needed (PYTHONPATH must be repo root)
+$env:PYTHONPATH = "."
+python -m alembic upgrade head
+
+# 5. Start local backend (PYTHONPATH already set)
+python -m uvicorn src.main.python.api.app:app --reload --host 0.0.0.0 --port 8000
+
+# 6. Verify DB connection
+Invoke-WebRequest http://localhost:8000/ready | Select-Object -ExpandProperty Content
+# Expected: {"status":"ready","database":"connected"}
+```
+
+**Why these modes are different:**
+- `MetaTrader5` Python package is Windows-only and requires a running MT5 terminal on the same machine
+- The Docker backend runs on Linux (Alpine) so it cannot import `MetaTrader5`
+- The `db` service publishes `5432:5432` to the host so the local Windows backend can share the same Postgres data
+- MT5 sync overlap protection is in-memory — **must use `--workers 1`** (already set in `docker-entrypoint.sh`; must also be enforced in local dev)
+
+**Do not mix modes carelessly:**
+- Running `docker compose up` when a local backend already holds port 8000 → Docker backend restart-loops
+- Running `docker compose down` stops the db, which disconnects the local backend
+- `docker compose down -v` permanently destroys all journal data (no backup warning, no undo)
+
+### MT5 password handling
+MT5 passwords are **never stored in the database**. They are read from environment variables at sync time:
+```
+MT5_<ACCOUNT_ID_UPPER_UNDERSCORED>_PASSWORD=yourpassword
+# Example: account "ftmo-p1" → MT5_FTMO_P1_PASSWORD=yourpassword
+# Example: account "ic.markets.01" → MT5_IC_MARKETS_01_PASSWORD=yourpassword
+```
+These must be in `.env` (loaded by `load_dotenv()` at import time) or set in the shell environment before starting the backend.
+
+---
+
 ## Commands
 
 ```bash
