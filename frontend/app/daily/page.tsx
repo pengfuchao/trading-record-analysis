@@ -125,6 +125,7 @@ function PlanCard({ plan, accountId, setupNames }: { plan: DailyPlan; accountId:
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editError, setEditError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
 
   const { data: adherence } = useSWR(
     open && accountId ? `adherence-${plan.plan_id}` : null,
@@ -181,13 +182,14 @@ function PlanCard({ plan, accountId, setupNames }: { plan: DailyPlan; accountId:
 
   const handleDelete = async () => {
     setDeleting(true);
+    setDeleteError("");
     try {
       await api.deletePlan(accountId, plan.plan_id);
       mutate(`plans-${accountId}`);
     } catch (err: any) {
       setDeleting(false);
       setConfirmDelete(false);
-      alert(err.message);
+      setDeleteError(err.message);
     }
   };
 
@@ -362,6 +364,12 @@ function PlanCard({ plan, accountId, setupNames }: { plan: DailyPlan; accountId:
         </div>
       </div>
 
+      {deleteError && (
+        <div className="bg-red-950/30 border-t border-red-800/50 px-5 py-2 text-xs text-red-400">
+          Delete failed: {deleteError}
+        </div>
+      )}
+
       {open && (
         <div className="border-t border-gray-800 px-5 py-4 space-y-3">
           <Field label="Key Levels" value={plan.key_levels} />
@@ -417,6 +425,7 @@ function ReviewCard({ review, accountId }: { review: DailyReview; accountId: str
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editError, setEditError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
 
   const [form, setForm] = useState({
     trading_date: review.trading_date,
@@ -472,13 +481,14 @@ function ReviewCard({ review, accountId }: { review: DailyReview; accountId: str
 
   const handleDelete = async () => {
     setDeleting(true);
+    setDeleteError("");
     try {
       await api.deleteReview(accountId, review.review_id);
       mutate(`reviews-${accountId}`);
     } catch (err: any) {
       setDeleting(false);
       setConfirmDelete(false);
-      alert(err.message);
+      setDeleteError(err.message);
     }
   };
 
@@ -656,6 +666,12 @@ function ReviewCard({ review, accountId }: { review: DailyReview; accountId: str
         </div>
       </div>
 
+      {deleteError && (
+        <div className="bg-red-950/30 border-t border-red-800/50 px-5 py-2 text-xs text-red-400">
+          Delete failed: {deleteError}
+        </div>
+      )}
+
       {open && (
         <div className="border-t border-gray-800 px-5 py-4 space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
@@ -709,6 +725,7 @@ function NewPlanForm({ accountId, onDone, setupNames }: { accountId: string; onD
     special_rule: "",
   });
   const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   const set =
     (k: string) =>
@@ -718,6 +735,7 @@ function NewPlanForm({ accountId, onDone, setupNames }: { accountId: string; onD
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setCreateError("");
     try {
       await api.createPlan(accountId, {
         trading_date: form.trading_date,
@@ -737,7 +755,7 @@ function NewPlanForm({ accountId, onDone, setupNames }: { accountId: string; onD
       mutate(`plans-${accountId}`);
       onDone();
     } catch (err: any) {
-      alert(err.message);
+      setCreateError(err.message);
     } finally {
       setSaving(false);
     }
@@ -800,6 +818,7 @@ function NewPlanForm({ accountId, onDone, setupNames }: { accountId: string; onD
         <label className={labelCls}>Special Rule for Today</label>
         <input value={form.special_rule} onChange={set("special_rule")} className={inputCls} />
       </div>
+      {createError && <p className="text-red-400 text-xs">{createError}</p>}
       <div className="flex gap-3">
         <button type="submit" disabled={saving} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-4 py-2 rounded-md transition-colors">
           {saving ? "Saving…" : "Save Plan"}
@@ -830,6 +849,7 @@ function NewReviewForm({ accountId, onDone }: { accountId: string; onDone: () =>
     pnl_success: "",
   });
   const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   const set =
     (k: string) =>
@@ -839,6 +859,7 @@ function NewReviewForm({ accountId, onDone }: { accountId: string; onDone: () =>
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setCreateError("");
     try {
       await api.createReview(accountId, {
         trading_date: form.trading_date,
@@ -857,7 +878,7 @@ function NewReviewForm({ accountId, onDone }: { accountId: string; onDone: () =>
       mutate(`reviews-${accountId}`);
       onDone();
     } catch (err: any) {
-      alert(err.message);
+      setCreateError(err.message);
     } finally {
       setSaving(false);
     }
@@ -924,6 +945,7 @@ function NewReviewForm({ accountId, onDone }: { accountId: string; onDone: () =>
         <label className={labelCls}>Notes</label>
         <textarea rows={2} value={form.notes} onChange={set("notes")} className={inputCls} />
       </div>
+      {createError && <p className="text-red-400 text-xs">{createError}</p>}
       <div className="flex gap-3">
         <button type="submit" disabled={saving} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-4 py-2 rounded-md transition-colors">
           {saving ? "Saving…" : "Save Review"}

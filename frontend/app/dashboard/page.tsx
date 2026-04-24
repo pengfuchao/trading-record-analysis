@@ -1121,10 +1121,125 @@ function nDaysAgoISO(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
+// ── Create account card (onboarding empty state) ───────────────────────────────
+
+function CreateAccountCard({ onCreated }: { onCreated: () => void }) {
+  const [accountId, setNewAccountId] = useState("");
+  const [broker, setBroker] = useState("");
+  const [platform, setPlatform] = useState<"MT4" | "MT5">("MT5");
+  const [startingBalance, setStartingBalance] = useState("");
+  const [propFirm, setPropFirm] = useState("");
+  const [challengePhase, setChallengePhase] = useState("");
+  const [currency, setCurrency] = useState("USD");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const inputCls = "w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-blue-500";
+  const labelCls = "block text-xs text-gray-500 uppercase tracking-wider mb-0.5";
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await api.createAccount({
+        account_id: accountId.trim(),
+        broker: broker.trim(),
+        platform,
+        starting_balance: startingBalance ? parseFloat(startingBalance) : undefined,
+        prop_firm: propFirm.trim() || undefined,
+        challenge_phase: challengePhase || undefined,
+        account_currency: currency.trim().toUpperCase() || "USD",
+      });
+      onCreated();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to create account");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="bg-gray-900 border border-blue-800/40 rounded-xl p-6 space-y-5 max-w-lg">
+      <div>
+        <h2 className="text-base font-semibold text-gray-100">Create your first account</h2>
+        <p className="text-xs text-gray-500 mt-1">
+          Add a trading account to start logging trades, tracking performance, and generating coaching reviews.
+        </p>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>Account ID *</label>
+            <input
+              value={accountId}
+              onChange={(e) => setNewAccountId(e.target.value)}
+              placeholder="e.g. ftmo-p1"
+              required
+              className={inputCls}
+            />
+            <p className="text-xs text-gray-600 mt-0.5">Short unique label, no spaces</p>
+          </div>
+          <div>
+            <label className={labelCls}>Broker *</label>
+            <input
+              value={broker}
+              onChange={(e) => setBroker(e.target.value)}
+              placeholder="e.g. FTMO"
+              required
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Platform *</label>
+            <select value={platform} onChange={(e) => setPlatform(e.target.value as "MT4" | "MT5")} className={inputCls}>
+              <option value="MT5">MT5</option>
+              <option value="MT4">MT4</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Starting Balance</label>
+            <input
+              type="number"
+              step="0.01"
+              value={startingBalance}
+              onChange={(e) => setStartingBalance(e.target.value)}
+              placeholder="e.g. 10000"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Prop Firm</label>
+            <input value={propFirm} onChange={(e) => setPropFirm(e.target.value)} placeholder="e.g. FTMO" className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Challenge Phase</label>
+            <select value={challengePhase} onChange={(e) => setChallengePhase(e.target.value)} className={inputCls}>
+              <option value="">—</option>
+              <option value="Phase1">Phase 1</option>
+              <option value="Phase2">Phase 2</option>
+              <option value="Funded">Funded</option>
+              <option value="Live">Live</option>
+            </select>
+          </div>
+        </div>
+        {error && <p className="text-red-400 text-xs">{error}</p>}
+        <button
+          type="submit"
+          disabled={saving}
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-4 py-2 rounded-md transition-colors"
+        >
+          {saving ? "Creating…" : "Create Account"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 // ── Main dashboard ─────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { accountId, accounts } = useAccount();
+  const { accountId, accounts, isLoadingAccounts } = useAccount();
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [dailyLimitPct, setDailyLimitPct] = useState("5");
@@ -1288,8 +1403,11 @@ export default function DashboardPage() {
         {mt5Status && <Mt5FreshnessPill mt5Status={mt5Status} />}
       </div>
 
-      {!accountId && (
-        <p className="text-gray-500 text-sm">No account selected. Connect a broker or import trades first.</p>
+      {!accountId && !isLoadingAccounts && accounts.length === 0 && (
+        <CreateAccountCard onCreated={() => { globalMutate("accounts"); }} />
+      )}
+      {!accountId && !isLoadingAccounts && accounts.length > 0 && (
+        <p className="text-gray-500 text-sm">Select an account above to view the dashboard.</p>
       )}
 
       {accountId && isLoading && (

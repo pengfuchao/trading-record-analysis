@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
 from sqlalchemy import (
@@ -10,6 +10,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from src.main.python.utils.types import StringList
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class Base(DeclarativeBase):
@@ -27,7 +31,7 @@ class AccountModel(Base):
     starting_balance: Mapped[Optional[float]]= mapped_column(Float,       nullable=True)
     account_currency: Mapped[str]            = mapped_column(String(10),  nullable=False, default="USD")
     created_at:       Mapped[datetime]       = mapped_column(
-        DateTime(timezone=False), nullable=False, default=datetime.utcnow
+        DateTime(timezone=False), nullable=False, default=_utcnow
     )
 
     trades: Mapped[List["TradeModel"]] = relationship(
@@ -137,11 +141,11 @@ class TradeModel(Base):
     # ── Audit / import tracking ───────────────────────────────────────────────
     import_run_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     created_at:    Mapped[datetime]      = mapped_column(
-        DateTime(timezone=False), nullable=False, default=datetime.utcnow
+        DateTime(timezone=False), nullable=False, default=_utcnow
     )
     updated_at:    Mapped[datetime]      = mapped_column(
         DateTime(timezone=False), nullable=False,
-        default=datetime.utcnow, onupdate=datetime.utcnow,
+        default=_utcnow, onupdate=_utcnow,
     )
 
     account:    Mapped["AccountModel"]            = relationship("AccountModel", back_populates="trades")
@@ -175,11 +179,11 @@ class DailyPlanModel(Base):
     special_rule:       Mapped[Optional[str]]  = mapped_column(Text,        nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=False), nullable=False, default=datetime.utcnow
+        DateTime(timezone=False), nullable=False, default=_utcnow
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False,
-        default=datetime.utcnow, onupdate=datetime.utcnow,
+        default=_utcnow, onupdate=_utcnow,
     )
 
     reviews: Mapped[List["DailyReviewModel"]] = relationship(
@@ -221,11 +225,11 @@ class DailyReviewModel(Base):
     pnl_success:        Mapped[Optional[bool]]  = mapped_column(Boolean, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=False), nullable=False, default=datetime.utcnow
+        DateTime(timezone=False), nullable=False, default=_utcnow
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False,
-        default=datetime.utcnow, onupdate=datetime.utcnow,
+        default=_utcnow, onupdate=_utcnow,
     )
 
     plan: Mapped[Optional["DailyPlanModel"]] = relationship("DailyPlanModel", back_populates="reviews")
@@ -299,11 +303,11 @@ class TradePlanModel(Base):
 
     # ── Audit ─────────────────────────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=False), nullable=False, default=datetime.utcnow
+        DateTime(timezone=False), nullable=False, default=_utcnow
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False,
-        default=datetime.utcnow, onupdate=datetime.utcnow,
+        default=_utcnow, onupdate=_utcnow,
     )
 
     trades: Mapped[List["TradeModel"]] = relationship(
@@ -333,11 +337,11 @@ class SetupDefinitionModel(Base):
     screenshot_examples:    Mapped[Optional[List[str]]] = mapped_column(StringList(), nullable=True)
     notes:                  Mapped[Optional[str]]  = mapped_column(Text,         nullable=True)
     created_at:             Mapped[datetime]       = mapped_column(
-        DateTime(timezone=False), nullable=False, default=datetime.utcnow
+        DateTime(timezone=False), nullable=False, default=_utcnow
     )
     updated_at:             Mapped[datetime]       = mapped_column(
         DateTime(timezone=False), nullable=False,
-        default=datetime.utcnow, onupdate=datetime.utcnow,
+        default=_utcnow, onupdate=_utcnow,
     )
 
 
@@ -360,11 +364,11 @@ class MT5SyncConfigModel(Base):
     enabled:                  Mapped[bool]           = mapped_column(Boolean,      nullable=False, default=True)
     created_at:               Mapped[datetime]       = mapped_column(
         DateTime(timezone=False), nullable=False,
-        default=datetime.utcnow,
+        default=_utcnow,
     )
     updated_at:               Mapped[datetime]       = mapped_column(
         DateTime(timezone=False), nullable=False,
-        default=datetime.utcnow, onupdate=datetime.utcnow,
+        default=_utcnow, onupdate=_utcnow,
     )
 
 

@@ -42,6 +42,8 @@ export const api = {
   // Accounts
   getAccount: (id: string) => request<Account>(`/accounts/${id}`),
   listAccounts: () => request<Account[]>("/accounts"),
+  createAccount: (body: { account_id: string; broker: string; platform: string; starting_balance?: number; prop_firm?: string; challenge_phase?: string; account_currency?: string }) =>
+    request<Account>("/accounts", { method: "POST", body: JSON.stringify(body) }),
   updateAccount: (accountId: string, body: Partial<Account>) =>
     request<Account>(`/accounts/${accountId}`, {
       method: "PATCH",

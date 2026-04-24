@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Set
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -106,7 +106,7 @@ def _poll_account(account_id: str, lookback_days: int = 7) -> None:
                 broker_utc_offset=cfg.broker_utc_offset,
             )
 
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             svc = MT5SyncService(session)
             result = svc.sync_account(
                 account_id=account_id,
