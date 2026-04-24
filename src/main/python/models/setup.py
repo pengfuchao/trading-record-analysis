@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 
@@ -22,8 +22,8 @@ class SetupDefinition:
     common_mistakes: Optional[str] = None      # free text
     screenshot_examples: List[str] = field(default_factory=list)
     notes: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -86,7 +86,7 @@ class SetupStats:
 class SetupReport:
     """Account-level setup performance report."""
     account_id: str
-    generated_at: datetime = field(default_factory=datetime.utcnow)
+    generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     total_trades_analyzed: int = 0
     trades_with_setup: int = 0            # trades where setup_type is not None
     by_setup: Dict[str, SetupStats] = field(default_factory=dict)

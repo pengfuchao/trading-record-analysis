@@ -14,7 +14,7 @@ Password convention:
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -149,8 +149,8 @@ def trigger_mt5_sync(
         broker_utc_offset=cfg.broker_utc_offset,
     )
 
-    from_date = body.from_date or (datetime.utcnow() - timedelta(days=30))
-    to_date = body.to_date or datetime.utcnow()
+    from_date = body.from_date or (datetime.now(timezone.utc) - timedelta(days=30))
+    to_date = body.to_date or datetime.now(timezone.utc)
 
     # Acquire overlap guard — same lock used by background polling.
     # MT5 Python package uses process-level global state; concurrent syncs for

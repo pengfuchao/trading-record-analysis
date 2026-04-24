@@ -1,7 +1,7 @@
 import dataclasses
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, List
 
@@ -32,7 +32,7 @@ class OutputWriter:
         os.makedirs(self._output_dir, exist_ok=True)
 
     def _ts(self) -> str:
-        return datetime.utcnow().strftime(self._ts_format)
+        return datetime.now(timezone.utc).strftime(self._ts_format)
 
     def write_json(self, trades: List[Trade], run_label: str) -> str:
         path = os.path.join(self._output_dir, f"trades_{run_label}.json")

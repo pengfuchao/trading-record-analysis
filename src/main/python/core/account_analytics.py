@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional
 
 from src.main.python.core.metrics_calculator import MetricsCalculator
@@ -240,7 +240,7 @@ class AccountAnalytics:
         # Compute "today" in broker server local time so exit_datetime comparisons are consistent.
         # exit_datetime in the DB is stored in broker local time (no timezone info attached).
         # Using date.today() (machine local) can diverge from broker date around midnight.
-        today = (datetime.utcnow() + timedelta(hours=broker_utc_offset)).date()
+        today = (datetime.now(timezone.utc) + timedelta(hours=broker_utc_offset)).date()
 
         closed_trades = sorted(
             [t for t in trades if t.exit_datetime is not None],
@@ -331,7 +331,7 @@ class AccountAnalytics:
 
         return dict(
             account_id=account.account_id,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             starting_balance=starting_balance or None,
             estimated_current_balance=current_balance,
             total_net_pnl=total_net_pnl if closed_trades else None,

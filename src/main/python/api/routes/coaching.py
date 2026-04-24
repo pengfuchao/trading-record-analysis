@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -102,7 +102,7 @@ def generate_weekly_review(
 
     # Persist
     review_id = str(uuid.uuid4())
-    generated_at = datetime.utcnow()
+    generated_at = datetime.now(timezone.utc)
     orm = CoachingReviewModel(
         review_id=review_id,
         account_id=account_id,

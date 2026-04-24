@@ -55,7 +55,7 @@ class SyncResult:
     trades_skipped: int = 0
     open_positions_count: int = 0
     error_message: Optional[str] = None
-    started_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
 
 
@@ -145,7 +145,7 @@ class MT5SyncService:
         The caller's session is NOT committed here — that remains the caller's responsibility.
         """
         run_id = str(uuid.uuid4())
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
 
         # Record the run as "running" before we start
         run_row = MT5SyncRunModel(
@@ -221,7 +221,7 @@ class MT5SyncService:
             )
 
         finally:
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
             # Update the run row regardless of success/failure
             run_row.status = result.status
             run_row.completed_at = result.completed_at
@@ -305,7 +305,7 @@ class MT5SyncService:
         This ensures positions that closed since the last sync are removed.
         The caller's session is flushed but not committed.
         """
-        synced_at = datetime.utcnow()
+        synced_at = datetime.now(timezone.utc)
 
         # Delete the current snapshot for this account
         self._session.execute(

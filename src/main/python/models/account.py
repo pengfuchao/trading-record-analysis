@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from src.main.python.models.enums import ChallengePhase, Platform
@@ -14,4 +14,4 @@ class Account:
     challenge_phase: Optional[ChallengePhase] = None
     starting_balance: Optional[float] = None
     account_currency: str = "USD"
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

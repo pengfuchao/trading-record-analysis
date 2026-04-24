@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 
@@ -337,7 +337,7 @@ class DailyAdherenceReport:
 class AccountReport:
     # ── Identity ───────────────────────────────────────────────────────────
     account_id:          str
-    generated_at:        datetime = field(default_factory=datetime.utcnow)
+    generated_at:        datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # ── Account State ─────────────────────────────────────────────────────
     starting_balance:    Optional[float]   = None

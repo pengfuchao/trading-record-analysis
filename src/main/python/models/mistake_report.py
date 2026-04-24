@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 
@@ -25,7 +25,7 @@ class MistakeStats:
 class MistakeReport:
     """Account-level mistake analysis report."""
     account_id: str
-    generated_at: datetime = field(default_factory=datetime.utcnow)
+    generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     total_trades_analyzed: int = 0
     trades_with_any_mistake: int = 0
     mistake_rate: Optional[float] = None    # trades_with_any_mistake / total_trades_analyzed

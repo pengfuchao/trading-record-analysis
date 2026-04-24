@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -83,7 +83,7 @@ def update_setup(
     repo = _get_setup_repo(db)
     existing = _require_setup(setup_id, repo)
     update_data = body.model_dump(exclude_none=True)
-    updated = dataclasses.replace(existing, **update_data, updated_at=datetime.utcnow())
+    updated = dataclasses.replace(existing, **update_data, updated_at=datetime.now(timezone.utc))
     saved = repo.save(updated)
     return setup_def_to_response(saved)
 
