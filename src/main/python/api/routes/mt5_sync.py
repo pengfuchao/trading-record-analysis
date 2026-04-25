@@ -70,6 +70,7 @@ def upsert_mt5_config(
             account_id,
             enabled=body.enabled,
             interval_minutes=body.polling_interval_minutes,
+            lookback_days=body.lookback_days,
         )
     except Exception:
         pass  # scheduler failure must never block the config save response

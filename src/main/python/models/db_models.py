@@ -361,6 +361,7 @@ class MT5SyncConfigModel(Base):
     terminal_path:            Mapped[Optional[str]]  = mapped_column(String(500),  nullable=True)
     broker_utc_offset:        Mapped[int]            = mapped_column(Integer,      nullable=False, default=2)
     polling_interval_minutes: Mapped[int]            = mapped_column(Integer,      nullable=False, default=60)
+    lookback_days:            Mapped[int]            = mapped_column(Integer,      nullable=False, default=7)
     enabled:                  Mapped[bool]           = mapped_column(Boolean,      nullable=False, default=True)
     created_at:               Mapped[datetime]       = mapped_column(
         DateTime(timezone=False), nullable=False,

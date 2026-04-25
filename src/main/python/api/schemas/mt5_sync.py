@@ -16,9 +16,13 @@ class MT5ConfigCreate(BaseModel):
     )
     broker_utc_offset: int = Field(2, ge=-12, le=14, description="Broker server UTC offset (default 2 = EET)")
     polling_interval_minutes: int = Field(
-        60, gt=0, description="Placeholder for Phase 2 auto-polling. Not used in Phase 1."
+        60, gt=0, description="How often the background scheduler polls MT5 (minutes)."
     )
-    enabled: bool = Field(True, description="Whether auto-sync is enabled (Phase 2)")
+    lookback_days: int = Field(
+        7, gt=0, le=365,
+        description="Days of trade history to fetch on each scheduled poll (default 7).",
+    )
+    enabled: bool = Field(True, description="Whether auto-sync polling is enabled")
 
     @field_validator("mt5_server")
     @classmethod
