@@ -230,6 +230,35 @@ class TradeRepository:
         rows = self._session.execute(data_stmt).scalars().all()
         return [orm_to_trade(r) for r in rows], total
 
+    def get_all_filtered(
+        self,
+        account_id: str,
+        symbol: Optional[str] = None,
+        from_date: Optional[datetime] = None,
+        to_date: Optional[datetime] = None,
+        result: Optional[str] = None,
+    ) -> List[Trade]:
+        """
+        Return all matching trades without pagination, ordered by exit_datetime.
+        Used by the CSV export route.  Same filter semantics as get_by_account_filtered.
+        """
+        where_clauses = [TradeModel.account_id == account_id]
+        if symbol:
+            where_clauses.append(TradeModel.symbol == symbol)
+        if from_date:
+            where_clauses.append(TradeModel.exit_datetime >= from_date)
+        if to_date:
+            where_clauses.append(TradeModel.exit_datetime <= to_date)
+        if result:
+            where_clauses.append(TradeModel.result == result)
+        stmt = (
+            select(TradeModel)
+            .where(*where_clauses)
+            .order_by(TradeModel.exit_datetime.asc())
+        )
+        rows = self._session.execute(stmt).scalars().all()
+        return [orm_to_trade(r) for r in rows]
+
     def delete(self, trade_id: str) -> bool:
         """Returns True if a row was deleted, False if trade_id not found."""
         stmt = delete(TradeModel).where(TradeModel.trade_id == trade_id)

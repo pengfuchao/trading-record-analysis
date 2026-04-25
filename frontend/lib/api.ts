@@ -219,6 +219,20 @@ export const api = {
   getUnlinkedTrades: (accountId: string) =>
     request<Trade[]>(`/accounts/${accountId}/trades/unlinked`),
 
+  // Export
+  exportTradesCsvUrl: (
+    accountId: string,
+    params?: { symbol?: string; result?: string; from_date?: string; to_date?: string }
+  ): string => {
+    const q = new URLSearchParams();
+    if (params?.symbol) q.set("symbol", params.symbol);
+    if (params?.result) q.set("result", params.result);
+    if (params?.from_date) q.set("from_date", params.from_date);
+    if (params?.to_date) q.set("to_date", endOfDay(params.to_date)!);
+    const qs = q.toString();
+    return `${BASE}/accounts/${accountId}/trades/export/csv${qs ? `?${qs}` : ""}`;
+  },
+
   // MT5 Sync
   getMt5Config: (accountId: string) =>
     request<MT5Config>(`/accounts/${accountId}/mt5-config`),
@@ -804,6 +818,7 @@ export interface MT5Config {
   terminal_path?: string;
   broker_utc_offset: number;
   polling_interval_minutes: number;
+  lookback_days: number;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -815,6 +830,7 @@ export interface MT5ConfigCreate {
   terminal_path?: string;
   broker_utc_offset: number;
   polling_interval_minutes?: number;
+  lookback_days?: number;
   enabled?: boolean;
 }
 

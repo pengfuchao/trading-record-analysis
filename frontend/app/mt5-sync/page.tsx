@@ -189,6 +189,7 @@ export default function MT5SyncPage() {
   const [terminalPath, setTerminalPath] = useState("");
   const [utcOffset, setUtcOffset] = useState("2");
   const [pollingInterval, setPollingInterval] = useState("60");
+  const [lookbackDays, setLookbackDays] = useState("7");
   const [pollingEnabled, setPollingEnabled] = useState(true);
   const [configSaving, setConfigSaving] = useState(false);
   const [configSaved, setConfigSaved] = useState(false);
@@ -202,6 +203,7 @@ export default function MT5SyncPage() {
       setTerminalPath(config.terminal_path ?? "");
       setUtcOffset(String(config.broker_utc_offset));
       setPollingInterval(String(config.polling_interval_minutes));
+      setLookbackDays(String(config.lookback_days ?? 7));
       setPollingEnabled(config.enabled);
     }
   }, [config]);
@@ -227,6 +229,7 @@ export default function MT5SyncPage() {
         terminal_path: terminalPath.trim() || undefined,
         broker_utc_offset: parseInt(utcOffset, 10) || 2,
         polling_interval_minutes: Math.max(1, parseInt(pollingInterval, 10) || 60),
+        lookback_days: Math.min(365, Math.max(1, parseInt(lookbackDays, 10) || 7)),
         enabled: pollingEnabled,
       };
       await api.saveMt5Config(accountId, body);
@@ -393,6 +396,23 @@ export default function MT5SyncPage() {
               />
               <p className="text-xs text-gray-600">
                 How often the background scheduler runs a sync. Minimum 1 minute.
+              </p>
+            </div>
+
+            {/* Scheduled lookback */}
+            <div className="space-y-1">
+              <label className="text-xs text-gray-400">Scheduled Lookback (days)</label>
+              <input
+                type="number"
+                value={lookbackDays}
+                onChange={(e) => setLookbackDays(e.target.value)}
+                min={1}
+                max={365}
+                placeholder="7"
+                className="w-full bg-gray-800 border border-gray-700 text-gray-100 text-sm rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-600">
+                Days of history each background poll fetches (1–365). Manual sync uses its own date range above.
               </p>
             </div>
 

@@ -49,7 +49,23 @@ export default function TradesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Trade Log</h1>
-        <AccountSelector />
+        <div className="flex items-center gap-3">
+          {accountId && (
+            <a
+              href={api.exportTradesCsvUrl(accountId, {
+                symbol: symbol || undefined,
+                result: result || undefined,
+                from_date: fromDate || undefined,
+                to_date: toDate || undefined,
+              })}
+              download
+              className="text-xs text-gray-400 hover:text-gray-200 bg-gray-800 border border-gray-700 rounded px-3 py-1.5 transition-colors whitespace-nowrap"
+            >
+              ↓ Export CSV
+            </a>
+          )}
+          <AccountSelector />
+        </div>
       </div>
 
       {/* Filters */}

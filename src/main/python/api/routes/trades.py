@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import csv
 import dataclasses
+import io
 import math
 from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.main.python.api.dependencies import get_db, get_account_repo, get_trade_repo, require_account
@@ -149,6 +152,94 @@ def create_trade(
     )
     saved = trade_repo.save(trade)
     return TradeResponse.from_domain(saved)
+
+
+_CSV_FIELDS = [
+    "trade_id", "symbol", "direction", "asset_class", "session",
+    "entry_datetime", "exit_datetime", "holding_duration_minutes",
+    "entry_price", "exit_price", "stop_loss", "take_profit", "lot_size",
+    "gross_pnl", "commission", "swap", "net_pnl", "actual_r_multiple", "result",
+    "setup_type", "strategy", "trade_quality", "followed_plan", "is_a_plus_setup",
+    "early_entry", "chasing", "fomo", "emotional_trade", "revenge_trade",
+    "overtrading", "premature_exit", "moved_stop",
+    "lesson_learned", "notes", "mistake_tags",
+]
+
+
+@router.get(
+    "/{account_id}/trades/export/csv",
+    response_class=StreamingResponse,
+    summary="Export trade history as CSV",
+)
+def export_trades_csv(
+    account_id: str,
+    symbol: Optional[str] = None,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    result: Optional[str] = None,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """
+    Download all trades for an account as a CSV file.
+    Accepts the same filters as GET /trades (symbol, result, from_date, to_date).
+    No pagination — exports all matching rows in one file.
+    """
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    require_account(account_id, account_repo)
+    trades = trade_repo.get_all_filtered(
+        account_id, symbol=symbol, from_date=from_date, to_date=to_date, result=result
+    )
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=_CSV_FIELDS, extrasaction="ignore")
+    writer.writeheader()
+    for trade in trades:
+        dur = trade.holding_duration
+        writer.writerow({
+            "trade_id":               trade.trade_id,
+            "symbol":                 trade.symbol or "",
+            "direction":              trade.direction.value if trade.direction else "",
+            "asset_class":            trade.asset_class.value if trade.asset_class else "",
+            "session":                trade.session or "",
+            "entry_datetime":         trade.entry_datetime.isoformat() if trade.entry_datetime else "",
+            "exit_datetime":          trade.exit_datetime.isoformat() if trade.exit_datetime else "",
+            "holding_duration_minutes": round(dur.total_seconds() / 60, 1) if dur else "",
+            "entry_price":            trade.entry_price if trade.entry_price is not None else "",
+            "exit_price":             trade.exit_price if trade.exit_price is not None else "",
+            "stop_loss":              trade.stop_loss if trade.stop_loss is not None else "",
+            "take_profit":            trade.take_profit if trade.take_profit is not None else "",
+            "lot_size":               trade.lot_size if trade.lot_size is not None else "",
+            "gross_pnl":              trade.gross_pnl if trade.gross_pnl is not None else "",
+            "commission":             trade.commission if trade.commission is not None else "",
+            "swap":                   trade.swap if trade.swap is not None else "",
+            "net_pnl":                trade.net_pnl if trade.net_pnl is not None else "",
+            "actual_r_multiple":      trade.actual_r_multiple if trade.actual_r_multiple is not None else "",
+            "result":                 trade.result.value if trade.result else "",
+            "setup_type":             trade.setup_type or "",
+            "strategy":               trade.strategy or "",
+            "trade_quality":          trade.trade_quality or "",
+            "followed_plan":          "" if trade.followed_plan is None else str(trade.followed_plan),
+            "is_a_plus_setup":        "" if trade.is_a_plus_setup is None else str(trade.is_a_plus_setup),
+            "early_entry":            "" if trade.early_entry is None else str(trade.early_entry),
+            "chasing":                "" if trade.chasing is None else str(trade.chasing),
+            "fomo":                   "" if trade.fomo is None else str(trade.fomo),
+            "emotional_trade":        "" if trade.emotional_trade is None else str(trade.emotional_trade),
+            "revenge_trade":          "" if trade.revenge_trade is None else str(trade.revenge_trade),
+            "overtrading":            "" if trade.overtrading is None else str(trade.overtrading),
+            "premature_exit":         "" if trade.premature_exit is None else str(trade.premature_exit),
+            "moved_stop":             "" if trade.moved_stop is None else str(trade.moved_stop),
+            "lesson_learned":         trade.lesson_learned or "",
+            "notes":                  trade.notes or "",
+            "mistake_tags":           "|".join(trade.mistake_tags) if trade.mistake_tags else "",
+        })
+
+    filename = f"trades_{account_id}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{account_id}/trades/{trade_id}", response_model=TradeResponse)
