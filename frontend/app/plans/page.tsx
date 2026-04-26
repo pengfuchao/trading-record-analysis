@@ -103,7 +103,7 @@ function SelectInput({ label, value, onChange, options }: {
 }
 
 export default function PlansPage() {
-  const { accountId } = useAccount();
+  const { accountId, accounts, isLoadingAccounts } = useAccount();
   const { mutate } = useSWRConfig();
   const swrKey = accountId ? `trade-plans-${accountId}` : null;
 
@@ -174,7 +174,16 @@ export default function PlansPage() {
         </div>
       </div>
 
-      {!accountId && (
+      {!accountId && !isLoadingAccounts && accounts.length === 0 && (
+        <div className="rounded-lg border border-gray-800 bg-gray-900 px-5 py-10 text-center space-y-1">
+          <p className="text-gray-300 text-sm font-medium">No accounts yet</p>
+          <p className="text-gray-500 text-xs">Create your first account on the Dashboard to start planning trades.</p>
+          <a href="/" className="inline-block mt-3 text-xs text-blue-400 hover:text-blue-300 transition-colors">
+            → Go to Dashboard
+          </a>
+        </div>
+      )}
+      {!accountId && (accounts.length > 0 || isLoadingAccounts) && (
         <p className="text-gray-500 text-sm">Select an account to view and create trade plans.</p>
       )}
 

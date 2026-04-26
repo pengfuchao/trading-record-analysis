@@ -12,7 +12,7 @@ import { fmtDateTime, fmtPnl, fmt, pnlColor } from "@/lib/utils";
 const PAGE_SIZE = 50;
 
 export default function TradesPage() {
-  const { accountId } = useAccount();
+  const { accountId, accounts, isLoadingAccounts } = useAccount();
   const [symbol, setSymbol] = useState("");
   const [result, setResult] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -44,6 +44,7 @@ export default function TradesPage() {
   const trades = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = data?.total_pages ?? 1;
+  const hasFilters = !!(symbol || result || fromDate || toDate);
 
   return (
     <div className="space-y-4">
@@ -68,50 +69,81 @@ export default function TradesPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <input
-          placeholder="Symbol (e.g. XAUUSD)"
-          value={symbol}
-          onChange={(e) => setSymbolReset(e.target.value.toUpperCase())}
-          className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 w-44"
-        />
-        <select
-          value={result}
-          onChange={(e) => setResultReset(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        >
-          <option value="">All results</option>
-          <option value="Win">Win</option>
-          <option value="Loss">Loss</option>
-          <option value="Breakeven">Breakeven</option>
-        </select>
-        <span className="text-xs text-gray-500">from</span>
-        <input
-          type="date"
-          value={fromDate}
-          onChange={(e) => setFromDateReset(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-        <span className="text-xs text-gray-500">to</span>
-        <input
-          type="date"
-          value={toDate}
-          onChange={(e) => setToDateReset(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-        {(fromDate || toDate) && (
-          <button
-            onClick={() => { setFromDateReset(""); setToDateReset(""); }}
-            className="text-xs text-gray-400 hover:text-gray-200 bg-gray-800 border border-gray-700 rounded px-2 py-1.5"
-          >Clear dates</button>
-        )}
-      </div>
+      {/* Empty-state: no accounts exist yet */}
+      {!isLoadingAccounts && accounts.length === 0 && (
+        <div className="rounded-lg border border-gray-800 bg-gray-900 px-5 py-10 text-center space-y-1">
+          <p className="text-gray-300 text-sm font-medium">No accounts yet</p>
+          <p className="text-gray-500 text-xs">Create your first account on the Dashboard to start recording trades.</p>
+          <Link href="/" className="inline-block mt-3 text-xs text-blue-400 hover:text-blue-300 transition-colors">
+            → Go to Dashboard
+          </Link>
+        </div>
+      )}
 
-      {isLoading && <p className="text-gray-500 text-sm">Loading…</p>}
+      {/* Empty-state: accounts exist but none selected */}
+      {!isLoadingAccounts && accounts.length > 0 && !accountId && (
+        <p className="text-gray-500 text-sm">Select an account above to view your trades.</p>
+      )}
 
-      {!isLoading && trades.length === 0 && (
-        <p className="text-gray-500 text-sm">No trades found.</p>
+      {/* Filters — only shown when an account is selected */}
+      {accountId && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <input
+            placeholder="Symbol (e.g. XAUUSD)"
+            value={symbol}
+            onChange={(e) => setSymbolReset(e.target.value.toUpperCase())}
+            className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 w-44"
+          />
+          <select
+            value={result}
+            onChange={(e) => setResultReset(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">All results</option>
+            <option value="Win">Win</option>
+            <option value="Loss">Loss</option>
+            <option value="Breakeven">Breakeven</option>
+          </select>
+          <span className="text-xs text-gray-500">from</span>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDateReset(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <span className="text-xs text-gray-500">to</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDateReset(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          {(fromDate || toDate) && (
+            <button
+              onClick={() => { setFromDateReset(""); setToDateReset(""); }}
+              className="text-xs text-gray-400 hover:text-gray-200 bg-gray-800 border border-gray-700 rounded px-2 py-1.5"
+            >Clear dates</button>
+          )}
+        </div>
+      )}
+
+      {accountId && isLoading && <p className="text-gray-500 text-sm">Loading…</p>}
+
+      {/* Empty-state: account selected, filters active, no results */}
+      {accountId && !isLoading && trades.length === 0 && hasFilters && (
+        <p className="text-gray-500 text-sm">No trades match the current filters.</p>
+      )}
+
+      {/* Empty-state: account selected, no filters, no trades yet */}
+      {accountId && !isLoading && trades.length === 0 && !hasFilters && (
+        <div className="rounded-lg border border-dashed border-gray-700 px-5 py-10 text-center space-y-1">
+          <p className="text-gray-300 text-sm font-medium">No trades yet</p>
+          <p className="text-gray-500 text-xs">Import a CSV file or set up MT5 sync to record your first trade.</p>
+          <div className="flex justify-center gap-4 mt-3">
+            <Link href="/import" className="text-xs text-blue-400 hover:text-blue-300 transition-colors">→ Import CSV</Link>
+            <Link href="/mt5-sync" className="text-xs text-blue-400 hover:text-blue-300 transition-colors">→ MT5 Sync</Link>
+          </div>
+        </div>
       )}
 
       {trades.length > 0 && (

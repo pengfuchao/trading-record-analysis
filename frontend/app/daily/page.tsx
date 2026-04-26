@@ -961,7 +961,7 @@ function NewReviewForm({ accountId, onDone }: { accountId: string; onDone: () =>
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function DailyPage() {
-  const { accountId } = useAccount();
+  const { accountId, accounts, isLoadingAccounts } = useAccount();
   const [tab, setTab] = useState<"plans" | "reviews">("plans");
   const [showNewPlan, setShowNewPlan] = useState(false);
   const [showNewReview, setShowNewReview] = useState(false);
@@ -984,67 +984,94 @@ export default function DailyPage() {
         <AccountSelector />
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-800">
-        {(["plans", "reviews"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm capitalize transition-colors border-b-2 -mb-px ${
-              tab === t
-                ? "border-blue-500 text-blue-400"
-                : "border-transparent text-gray-500 hover:text-gray-300"
-            }`}
-          >
-            {t === "plans" ? "Pre-Market Plans" : "Post-Market Reviews"}
-          </button>
-        ))}
-      </div>
-
-      {tab === "plans" && (
-        <div className="space-y-3">
-          <div className="flex justify-end">
-            <button
-              onClick={() => setShowNewPlan(!showNewPlan)}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-md transition-colors"
-            >
-              + New Plan
-            </button>
-          </div>
-          {showNewPlan && accountId && (
-            <NewPlanForm accountId={accountId} onDone={() => setShowNewPlan(false)} setupNames={setupNames} />
-          )}
-          {plansLoading && <p className="text-gray-500 text-sm">Loading…</p>}
-          {!plansLoading && plans.length === 0 && !showNewPlan && (
-            <p className="text-gray-500 text-sm">No pre-market plans yet.</p>
-          )}
-          {accountId && plans.map((p) => (
-            <PlanCard key={p.plan_id} plan={p} accountId={accountId} setupNames={setupNames} />
-          ))}
+      {/* Empty-state: no accounts exist yet */}
+      {!isLoadingAccounts && accounts.length === 0 && (
+        <div className="rounded-lg border border-gray-800 bg-gray-900 px-5 py-10 text-center space-y-1">
+          <p className="text-gray-300 text-sm font-medium">No accounts yet</p>
+          <p className="text-gray-500 text-xs">Create your first account on the Dashboard to start journaling your trading days.</p>
+          <a href="/" className="inline-block mt-3 text-xs text-blue-400 hover:text-blue-300 transition-colors">
+            → Go to Dashboard
+          </a>
         </div>
       )}
 
-      {tab === "reviews" && (
-        <div className="space-y-3">
-          <div className="flex justify-end">
-            <button
-              onClick={() => setShowNewReview(!showNewReview)}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-md transition-colors"
-            >
-              + New Review
-            </button>
+      {/* Empty-state: accounts exist but none selected */}
+      {!isLoadingAccounts && accounts.length > 0 && !accountId && (
+        <p className="text-gray-500 text-sm">Select an account above to view daily plans and reviews.</p>
+      )}
+
+      {/* Main content — only rendered when an account is selected */}
+      {accountId && (
+        <>
+          {/* Tabs */}
+          <div className="flex gap-1 border-b border-gray-800">
+            {(["plans", "reviews"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-4 py-2 text-sm capitalize transition-colors border-b-2 -mb-px ${
+                  tab === t
+                    ? "border-blue-500 text-blue-400"
+                    : "border-transparent text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                {t === "plans" ? "Pre-Market Plans" : "Post-Market Reviews"}
+              </button>
+            ))}
           </div>
-          {showNewReview && accountId && (
-            <NewReviewForm accountId={accountId} onDone={() => setShowNewReview(false)} />
+
+          {tab === "plans" && (
+            <div className="space-y-3">
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowNewPlan(!showNewPlan)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-md transition-colors"
+                >
+                  + New Plan
+                </button>
+              </div>
+              {showNewPlan && (
+                <NewPlanForm accountId={accountId} onDone={() => setShowNewPlan(false)} setupNames={setupNames} />
+              )}
+              {plansLoading && <p className="text-gray-500 text-sm">Loading…</p>}
+              {!plansLoading && plans.length === 0 && !showNewPlan && (
+                <div className="rounded-lg border border-dashed border-gray-700 px-5 py-8 text-center space-y-1">
+                  <p className="text-gray-400 text-sm font-medium">No pre-market plans yet</p>
+                  <p className="text-gray-500 text-xs">Write a plan before each trading session to define your bias, setups, and rules for the day.</p>
+                </div>
+              )}
+              {plans.map((p) => (
+                <PlanCard key={p.plan_id} plan={p} accountId={accountId} setupNames={setupNames} />
+              ))}
+            </div>
           )}
-          {reviewsLoading && <p className="text-gray-500 text-sm">Loading…</p>}
-          {!reviewsLoading && reviews.length === 0 && !showNewReview && (
-            <p className="text-gray-500 text-sm">No post-market reviews yet.</p>
+
+          {tab === "reviews" && (
+            <div className="space-y-3">
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowNewReview(!showNewReview)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-md transition-colors"
+                >
+                  + New Review
+                </button>
+              </div>
+              {showNewReview && (
+                <NewReviewForm accountId={accountId} onDone={() => setShowNewReview(false)} />
+              )}
+              {reviewsLoading && <p className="text-gray-500 text-sm">Loading…</p>}
+              {!reviewsLoading && reviews.length === 0 && !showNewReview && (
+                <div className="rounded-lg border border-dashed border-gray-700 px-5 py-8 text-center space-y-1">
+                  <p className="text-gray-400 text-sm font-medium">No post-market reviews yet</p>
+                  <p className="text-gray-500 text-xs">Log a review at the end of each trading day to reflect on your process, mistakes, and improvements.</p>
+                </div>
+              )}
+              {reviews.map((r) => (
+                <ReviewCard key={r.review_id} review={r} accountId={accountId} />
+              ))}
+            </div>
           )}
-          {accountId && reviews.map((r) => (
-            <ReviewCard key={r.review_id} review={r} accountId={accountId} />
-          ))}
-        </div>
+        </>
       )}
     </div>
   );

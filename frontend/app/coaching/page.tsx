@@ -49,7 +49,7 @@ function FallbackNotice() {
 }
 
 export default function CoachingPage() {
-  const { accountId } = useAccount();
+  const { accountId, accounts, isLoadingAccounts } = useAccount();
   const defaultDates = isoWeekBounds();
 
   const [fromDate, setFromDate] = useState(defaultDates.from);
@@ -107,7 +107,16 @@ export default function CoachingPage() {
         <AccountSelector />
       </div>
 
-      {!accountId && (
+      {!accountId && !isLoadingAccounts && accounts.length === 0 && (
+        <div className="rounded-lg border border-gray-800 bg-gray-900 px-5 py-10 text-center space-y-1">
+          <p className="text-gray-300 text-sm font-medium">No accounts yet</p>
+          <p className="text-gray-500 text-xs">Create your first account on the Dashboard, then import or sync trades to generate a coaching review.</p>
+          <a href="/" className="inline-block mt-3 text-xs text-blue-400 hover:text-blue-300 transition-colors">
+            → Go to Dashboard
+          </a>
+        </div>
+      )}
+      {!accountId && (accounts.length > 0 || isLoadingAccounts) && (
         <p className="text-gray-500 text-sm">Select an account to generate a review.</p>
       )}
 
@@ -220,6 +229,17 @@ export default function CoachingPage() {
                 <h2 className="text-xs uppercase tracking-wider text-blue-400/80 mb-3">Priority Improvement</h2>
                 <p className="text-sm text-blue-100 leading-relaxed font-medium">{review.improvement}</p>
               </section>
+            </div>
+          )}
+
+          {/* No data hint — shown when account has no reviews yet and nothing is loading */}
+          {!loading && !review && history !== undefined && history.reviews.length === 0 && (
+            <div className="rounded-lg border border-dashed border-gray-700 px-5 py-8 text-center space-y-1">
+              <p className="text-gray-400 text-sm font-medium">No coaching reviews yet</p>
+              <p className="text-gray-500 text-xs">
+                Coaching reviews are generated from your trade data. Import trades or sync with MT5 first,
+                then select a date range and click Generate Review.
+              </p>
             </div>
           )}
 
