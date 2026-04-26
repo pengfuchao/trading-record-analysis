@@ -72,7 +72,11 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Apply migrations (alembic upgrade head)
-        run: python -m alembic upgrade head
+        # Use the installed alembic CLI binary, not `python -m alembic`.
+        # The repo root contains an alembic/ directory (migrations); python -m alembic
+        # finds that local package first and fails with "No module named alembic.__main__".
+        # The same fix is applied in docker-entrypoint.sh (PYTHONPATH="" alembic upgrade head).
+        run: alembic upgrade head
 
       - name: Run unit tests against Postgres URL
         run: python -m pytest src/test/unit/ -v --tb=short
