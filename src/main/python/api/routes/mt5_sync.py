@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 from src.main.python.api.dependencies import get_db, require_account
 from src.main.python.services.telegram_notifier import get_notifier
 from src.main.python.api.schemas.mt5_sync import (
+    BackfillSLTPRequest,
+    BackfillSLTPResponse,
     MT5ConfigCreate,
     MT5ConfigResponse,
     MT5SyncRequest,
@@ -192,6 +194,91 @@ def trigger_mt5_sync(
         error_message=result.error_message,
         started_at=result.started_at,
         completed_at=result.completed_at,
+    )
+
+
+# ── Backfill SL/TP endpoint ────────────────────────────────────────────────────
+
+@router.post(
+    "/accounts/{account_id}/mt5-sync/backfill-sl-tp",
+    response_model=BackfillSLTPResponse,
+    summary="Backfill stop_loss / take_profit / R for historical MT5 trades",
+)
+def backfill_sl_tp(
+    account_id: str,
+    body: BackfillSLTPRequest = None,
+    db: Session = Depends(get_db),
+    account_repo: AccountRepository = Depends(_get_account_repo),
+    svc: MT5SyncService = Depends(_get_sync_service),
+) -> BackfillSLTPResponse:
+    """
+    Fetch historical orders from MT5 and populate stop_loss / take_profit /
+    actual_r_multiple for trades that are currently missing those values.
+
+    Unlike the regular sync (which only touches trades within a short deal-fetch
+    window), this endpoint queries orders across a wide date range so that old
+    trades already in the DB can be backfilled.
+
+    The response counts explain exactly why each trade was or was not updated:
+    - updated        → SL found on matching order, written to DB
+    - sl_zero        → order found but broker reported SL=0.0 (no stop set)
+    - no_order_found → no matching order in the requested date window
+
+    Requires a running MT5 terminal (same constraint as regular sync).
+    """
+    if body is None:
+        body = BackfillSLTPRequest()
+
+    require_account(account_id, account_repo)
+
+    cfg = svc.get_config(account_id)
+    if not cfg:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No MT5 config for account '{account_id}'. "
+                   "Set up config first with POST /accounts/{account_id}/mt5-config.",
+        )
+
+    password = load_mt5_password(account_id)
+    if not password:
+        env_key = f"MT5_{account_id.upper().replace('-', '_').replace(' ', '_')}_PASSWORD"
+        raise HTTPException(
+            status_code=422,
+            detail=f"MT5 password not found. Set environment variable '{env_key}' and restart the server.",
+        )
+
+    conn_config = MT5ConnectionConfig(
+        login=cfg.mt5_login,
+        password=password,
+        server=cfg.mt5_server,
+        terminal_path=cfg.terminal_path,
+        broker_utc_offset=cfg.broker_utc_offset,
+    )
+
+    from_date = body.from_date or (datetime.now(timezone.utc) - timedelta(days=730))
+    to_date = body.to_date or datetime.now(timezone.utc)
+
+    if not acquire_sync_lock(account_id):
+        raise HTTPException(
+            status_code=409,
+            detail=f"A sync for account '{account_id}' is already in progress.",
+        )
+
+    try:
+        counts = svc.backfill_sl_tp(
+            account_id=account_id,
+            config=conn_config,
+            from_date=from_date,
+            to_date=to_date,
+        )
+    finally:
+        release_sync_lock(account_id)
+
+    return BackfillSLTPResponse(
+        account_id=account_id,
+        from_date=from_date,
+        to_date=to_date,
+        **counts,
     )
 
 

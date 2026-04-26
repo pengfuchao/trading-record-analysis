@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from src.main.python.models.db_models import MT5OpenPositionModel, MT5SyncConfigModel, MT5SyncRunModel
+from src.main.python.models.db_models import MT5OpenPositionModel, MT5SyncConfigModel, MT5SyncRunModel, TradeModel
 from src.main.python.models.enums import Direction, Platform
 from src.main.python.models.trade import Trade
 from src.main.python.services.derived_field_calculator import DerivedFieldCalculator
@@ -296,6 +296,119 @@ class MT5SyncService:
             trades.append(trade)
 
         return trades
+
+    # ── Historical SL/TP backfill ──────────────────────────────────────────────
+
+    def backfill_sl_tp(
+        self,
+        account_id: str,
+        config: MT5ConnectionConfig,
+        from_date: datetime,
+        to_date: datetime,
+    ) -> Dict[str, int]:
+        """
+        Backfill stop_loss, take_profit, and actual_r_multiple for existing
+        MT5-synced trades that currently have no stop_loss.
+
+        Unlike sync_account, which only processes trades within the deal-fetch
+        window, this method:
+          1. Fetches orders for a wide date range (caller controls from_date).
+          2. Queries ALL trades for this account with stop_loss IS NULL.
+          3. Matches by position_id: MT5 trade_id == str(order.position_id).
+          4. Writes stop_loss / take_profit / actual_r_multiple for each match.
+
+        Returns a count dict with these keys:
+          orders_fetched   — unique positions found in the order history
+          trades_checked   — trades with stop_loss IS NULL at query time
+          updated          — trades that received a valid SL and were saved
+          sl_zero          — order was found but SL=0.0 (broker did not set SL)
+          no_order_found   — no order for this position in the given date range
+          r_computed       — subset of updated where R was also calculated
+        """
+        with MT5Connector(config) as conn:
+            orders_sl_tp = conn.fetch_orders_sl_tp(from_date, to_date)
+
+        orders_fetched = len(orders_sl_tp)
+
+        # All trades for this account with no SL set yet (any platform — a
+        # numeric trade_id means it came from MT5; non-numeric will be skipped).
+        stmt = (
+            select(TradeModel)
+            .where(
+                TradeModel.account_id == account_id,
+                TradeModel.stop_loss.is_(None),
+            )
+        )
+        orm_trades = list(self._session.execute(stmt).scalars().all())
+        trades_checked = len(orm_trades)
+
+        updated = 0
+        sl_zero = 0
+        no_order = 0
+        r_computed = 0
+
+        for orm_trade in orm_trades:
+            # MT5 trade_id == str(position_id), so it must parse as int.
+            try:
+                pos_id = int(orm_trade.trade_id)
+            except (ValueError, TypeError):
+                no_order += 1
+                continue
+
+            if pos_id not in orders_sl_tp:
+                no_order += 1
+                logger.debug(
+                    "Backfill: no order found for trade_id=%s (position_id=%d not in %d-entry order window)",
+                    orm_trade.trade_id, pos_id, orders_fetched,
+                )
+                continue
+
+            sl, tp = orders_sl_tp[pos_id]
+            if sl is None:
+                sl_zero += 1
+                logger.debug(
+                    "Backfill: order found for trade_id=%s but SL=0.0 (broker did not set SL on order)",
+                    orm_trade.trade_id,
+                )
+                continue
+
+            orm_trade.stop_loss = sl
+            orm_trade.take_profit = tp
+
+            # Recompute R if we have enough data.
+            try:
+                direction_enum = Direction(orm_trade.direction) if orm_trade.direction else None
+            except ValueError:
+                direction_enum = None
+
+            new_r = _calc.calc_actual_r(
+                orm_trade.exit_price, orm_trade.entry_price, sl, direction_enum
+            )
+            if new_r is not None:
+                orm_trade.actual_r_multiple = new_r
+                r_computed += 1
+
+            updated += 1
+            logger.info(
+                "Backfill: updated trade_id=%s sl=%s tp=%s r=%s",
+                orm_trade.trade_id, sl, tp, new_r,
+            )
+
+        self._session.flush()
+        logger.info(
+            "SL/TP backfill complete account=%s: orders_fetched=%d trades_checked=%d "
+            "updated=%d sl_zero=%d no_order=%d r_computed=%d",
+            account_id, orders_fetched, trades_checked,
+            updated, sl_zero, no_order, r_computed,
+        )
+        return {
+            "orders_fetched": orders_fetched,
+            "trades_checked": trades_checked,
+            "updated": updated,
+            "sl_zero": sl_zero,
+            "no_order_found": no_order,
+            "r_computed": r_computed,
+        }
 
     def _refresh_open_positions(
         self,

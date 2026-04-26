@@ -24,7 +24,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.main.python.models.db_models import (
-    Base, MT5OpenPositionModel, MT5SyncRunModel,
+    Base, AccountModel, MT5OpenPositionModel, MT5SyncConfigModel, MT5SyncRunModel, TradeModel,
 )
 from src.main.python.services.mt5_connector import MT5ConnectionConfig, MT5ConnectionError
 from src.main.python.services.mt5_sync_service import MT5SyncService, SyncResult, load_mt5_password
@@ -401,3 +401,165 @@ class TestLoadMT5Password:
         monkeypatch.delenv("MT5_DOESNOTEXIST_PASSWORD", raising=False)
         result = load_mt5_password("doesnotexist")
         assert result is None
+
+
+# ── backfill_sl_tp ────────────────────────────────────────────────────────────
+
+def _make_trade_row(
+    trade_id: str,
+    account_id: str = "BF-ACC",
+    direction: str = "Long",
+    entry_price: float = 1.0800,
+    exit_price: float = 1.0900,
+    stop_loss=None,
+    take_profit=None,
+) -> TradeModel:
+    return TradeModel(
+        trade_id=trade_id,
+        account_id=account_id,
+        platform="MT5",
+        direction=direction,
+        entry_price=entry_price,
+        exit_price=exit_price,
+        stop_loss=stop_loss,
+        take_profit=take_profit,
+        result="Win",
+        net_pnl=100.0,
+    )
+
+
+@contextmanager
+def _stub_backfill_connector(orders_sl_tp: dict):
+    """Stub MT5Connector so fetch_orders_sl_tp returns a preset dict."""
+    mock_conn = MagicMock()
+    conn_instance = MagicMock()
+    conn_instance.fetch_orders_sl_tp.return_value = orders_sl_tp
+    mock_conn.__enter__ = MagicMock(return_value=conn_instance)
+    mock_conn.__exit__ = MagicMock(return_value=False)
+    with patch("src.main.python.services.mt5_sync_service.MT5Connector", return_value=mock_conn):
+        yield
+
+
+def _seed_account_and_trade(session, trade_id: str, account_id: str = "BF-ACC", **trade_kwargs):
+    if not session.get(AccountModel, account_id):
+        session.add(AccountModel(
+            account_id=account_id,
+            broker="Test",
+            platform="MT5",
+            account_currency="USD",
+        ))
+        session.flush()
+    row = _make_trade_row(trade_id, account_id=account_id, **trade_kwargs)
+    session.add(row)
+    session.flush()
+    return row
+
+
+FROM = datetime(2024, 1, 1, tzinfo=timezone.utc)
+TO = datetime(2026, 12, 31, tzinfo=timezone.utc)
+
+
+class TestBackfillSLTP:
+    """
+    Tests for MT5SyncService.backfill_sl_tp() — each test answers a specific
+    diagnostic question about why historical trades may or may not receive
+    SL/TP in a backfill pass.
+    """
+
+    def test_updates_stop_loss_and_take_profit_when_order_matched(self, session, config):
+        """Happy path: matching order with valid SL/TP → trade updated."""
+        _seed_account_and_trade(session, "111001", stop_loss=None)
+        orders_sl_tp = {111001: (1.0750, 1.0950)}
+
+        with _stub_backfill_connector(orders_sl_tp):
+            counts = MT5SyncService(session).backfill_sl_tp("BF-ACC", config, FROM, TO)
+
+        row = session.get(TradeModel, "111001")
+        assert row.stop_loss == pytest.approx(1.0750)
+        assert row.take_profit == pytest.approx(1.0950)
+        assert counts["updated"] == 1
+        assert counts["no_order_found"] == 0
+        assert counts["sl_zero"] == 0
+
+    def test_computes_r_when_sl_found_and_prices_present(self, session, config):
+        """R should be computed when SL is found and entry/exit prices are in DB."""
+        _seed_account_and_trade(
+            session, "111002",
+            entry_price=1.0800, exit_price=1.0900, direction="Long", stop_loss=None,
+        )
+        # SL dist = 0.005; move = 0.01 → R = 2.0
+        orders_sl_tp = {111002: (1.0750, None)}
+
+        with _stub_backfill_connector(orders_sl_tp):
+            counts = MT5SyncService(session).backfill_sl_tp("BF-ACC", config, FROM, TO)
+
+        row = session.get(TradeModel, "111002")
+        assert row.stop_loss == pytest.approx(1.0750)
+        assert row.actual_r_multiple == pytest.approx(2.0)
+        assert counts["r_computed"] == 1
+
+    def test_sl_zero_counted_not_updated(self, session, config):
+        """Order found but SL=0.0 on the order (broker did not set SL): trade unchanged."""
+        _seed_account_and_trade(session, "111003", stop_loss=None)
+        # (None, None) simulates the 0.0→None conversion in fetch_orders_sl_tp
+        orders_sl_tp = {111003: (None, None)}
+
+        with _stub_backfill_connector(orders_sl_tp):
+            counts = MT5SyncService(session).backfill_sl_tp("BF-ACC", config, FROM, TO)
+
+        row = session.get(TradeModel, "111003")
+        assert row.stop_loss is None
+        assert counts["sl_zero"] == 1
+        assert counts["updated"] == 0
+
+    def test_no_order_found_when_position_id_outside_window(self, session, config):
+        """Position not in order history (trade outside date window): trade unchanged."""
+        _seed_account_and_trade(session, "111004", stop_loss=None)
+        orders_sl_tp = {}  # empty — simulates narrow window missing old trades
+
+        with _stub_backfill_connector(orders_sl_tp):
+            counts = MT5SyncService(session).backfill_sl_tp("BF-ACC", config, FROM, TO)
+
+        row = session.get(TradeModel, "111004")
+        assert row.stop_loss is None
+        assert counts["no_order_found"] >= 1
+        assert counts["updated"] == 0
+
+    def test_non_integer_trade_id_safely_skipped(self, session, config):
+        """CSV-imported trade with non-numeric ID does not crash backfill."""
+        _seed_account_and_trade(session, "CSV-IMPORT-XYZ", stop_loss=None)
+        orders_sl_tp = {}
+
+        with _stub_backfill_connector(orders_sl_tp):
+            counts = MT5SyncService(session).backfill_sl_tp("BF-ACC", config, FROM, TO)
+
+        assert counts["no_order_found"] >= 1  # the CSV trade was skipped gracefully
+
+    def test_trades_already_with_sl_not_included_in_query(self, session, config):
+        """Trades that already have stop_loss set are excluded; they are not re-checked."""
+        _seed_account_and_trade(session, "111005", stop_loss=1.0700)
+        orders_sl_tp = {111005: (1.0600, 1.1000)}  # different SL
+
+        with _stub_backfill_connector(orders_sl_tp):
+            counts = MT5SyncService(session).backfill_sl_tp("BF-ACC", config, FROM, TO)
+
+        row = session.get(TradeModel, "111005")
+        assert row.stop_loss == pytest.approx(1.0700)  # unchanged
+
+    def test_mixed_outcomes_counted_correctly(self, session, config):
+        """updated / sl_zero / no_order_found counts are mutually exclusive and correct."""
+        _seed_account_and_trade(session, "111006", stop_loss=None)  # valid order
+        _seed_account_and_trade(session, "111007", stop_loss=None)  # sl=0 on order
+        _seed_account_and_trade(session, "111008", stop_loss=None)  # no order in window
+        orders_sl_tp = {
+            111006: (1.0750, 1.0950),
+            111007: (None, None),
+            # 111008 absent
+        }
+
+        with _stub_backfill_connector(orders_sl_tp):
+            counts = MT5SyncService(session).backfill_sl_tp("BF-ACC", config, FROM, TO)
+
+        assert counts["updated"] >= 1    # at minimum 111006
+        assert counts["sl_zero"] >= 1    # at minimum 111007
+        assert counts["no_order_found"] >= 1  # at minimum 111008

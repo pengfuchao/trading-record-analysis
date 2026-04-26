@@ -128,3 +128,35 @@ class MT5SyncStatusResponse(BaseModel):
     next_poll_at: Optional[datetime]    # next scheduled fire time (None if not scheduled)
     last_sync_at: Optional[datetime]    # completed_at of the most recent successful run
     last_runs: List[MT5SyncRunSummary]
+
+
+class BackfillSLTPRequest(BaseModel):
+    """Optional body for POST /accounts/{id}/mt5-sync/backfill-sl-tp."""
+    from_date: Optional[datetime] = Field(
+        None,
+        description="Start of order history window. Defaults to 2 years ago.",
+    )
+    to_date: Optional[datetime] = Field(
+        None,
+        description="End of order history window. Defaults to now.",
+    )
+
+
+class BackfillSLTPResponse(BaseModel):
+    """
+    Response for POST /accounts/{id}/mt5-sync/backfill-sl-tp.
+
+    Counts explain WHY some trades still have no SL after backfill:
+      updated        — received SL from a matching order; R also computed if prices available
+      sl_zero        — order was found but SL=0.0 (broker did not set SL on the order)
+      no_order_found — no order for this trade in the queried date window
+    """
+    account_id: str
+    from_date: datetime
+    to_date: datetime
+    orders_fetched: int      # unique positions found in history_orders_get
+    trades_checked: int      # trades in DB with stop_loss IS NULL (candidates)
+    updated: int             # trades that received stop_loss (and possibly R)
+    sl_zero: int             # order found but sl=0.0 on the order
+    no_order_found: int      # no matching order in the given window
+    r_computed: int          # subset of updated where actual_r_multiple was also set
