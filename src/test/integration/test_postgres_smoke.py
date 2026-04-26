@@ -214,7 +214,11 @@ class TestPostgresOrmCrud:
     def test_setup_definition_crud(self, pg_session):
         from src.main.python.models.db_models import SetupDefinitionModel
 
+        # setup_id is a required user-supplied slug (not auto-generated).
+        # SetupDefinitionCreate.setup_id is a mandatory field; the ORM column
+        # has no default — omitting it is what caused the NOT NULL violation.
         setup = SetupDefinitionModel(
+            setup_id="pg-ci-smoke-setup",
             name="CI Test Setup",
             strategy_group="Breakout",
             description="Smoke test",
@@ -222,6 +226,6 @@ class TestPostgresOrmCrud:
         pg_session.add(setup)
         pg_session.flush()
 
-        found = pg_session.get(SetupDefinitionModel, setup.setup_id)
+        found = pg_session.get(SetupDefinitionModel, "pg-ci-smoke-setup")
         assert found is not None
         assert found.name == "CI Test Setup"
