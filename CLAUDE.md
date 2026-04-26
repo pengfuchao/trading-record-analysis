@@ -49,16 +49,14 @@ Before starting ANY task, respond with:
 4. Frontend `app/dashboard/page.tsx` — 15 wired panels, no fake data
 
 ### Current Weak / Rough Areas
-- `CORS_ORIGINS` hardcoded in `docker-compose.yml` — can't override via `.env` for remote deploys
 - Telegram webhook has no HTTP route tests — chat_id guard regression would be invisible
 - Frontend E2E tests use mocked API only — no real-data end-to-end coverage
 - No automated backup schedule — `backup.ps1`/`backup.sh` exist but must be run manually
 
 ### Next Direction (no phase assigned yet)
 Highest-value candidates:
-1. Fix `CORS_ORIGINS` to use `${CORS_ORIGINS:-http://localhost:3000}` in compose (5-min change)
-2. Add Telegram webhook route tests (same pattern as existing `test_routes.py`)
-3. Empty-state guidance on Trades, Plans, Daily, Coaching pages (onboarding polish)
+1. Add Telegram webhook route tests (same pattern as existing `test_routes.py`)
+2. Empty-state guidance on Trades, Plans, Daily, Coaching pages (onboarding polish)
 
 ---
 

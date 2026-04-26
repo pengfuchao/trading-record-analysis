@@ -30,7 +30,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg2://trading:trading@db:5432/trading_journal
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     ports:
       - "8000:8000"
     healthcheck:

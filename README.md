@@ -107,7 +107,7 @@ npm run dev
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `CORS_ORIGINS` | No | Comma-separated allowed origins (default: `*`, unsafe for public deploys) |
+| `CORS_ORIGINS` | No | Comma-separated allowed origins. Docker default: `http://localhost:3000`. Override in `.env` for remote deploys. |
 | `ANTHROPIC_API_KEY` | No | AI coaching — falls back to rule-based without it |
 | `LOG_LEVEL` | No | Log verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` (default: `INFO`) |
 | `TELEGRAM_BOT_TOKEN` | No | Telegram push notifications |
@@ -426,7 +426,6 @@ See `RPD.md` for the full product roadmap.
 
 | Priority | Area |
 |---|---|
-| Next | Fix `CORS_ORIGINS` to be configurable via `.env` for remote deploys |
 | Next | Add Telegram webhook route tests |
 | Next | Empty-state onboarding messages on Trades, Plans, Daily, Coaching pages |
 | Later | Target-hit vs stop-hit decomposition |
