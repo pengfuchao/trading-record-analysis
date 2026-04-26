@@ -198,6 +198,8 @@ class TradeRepository:
 
         Returns (items, total) where total is the count matching all filters.
         page is 1-based; page_size controls rows per page.
+        Ordered newest-first (exit_datetime DESC) so the Trade Log shows recent
+        trades at the top.
         """
         # Build the shared WHERE clause
         where_clauses = [TradeModel.account_id == account_id]
@@ -218,12 +220,12 @@ class TradeRepository:
         )
         total: int = self._session.execute(count_stmt).scalar_one()
 
-        # Paginated data query
+        # Paginated data query — newest first, nulls pushed to end
         offset = (max(1, page) - 1) * page_size
         data_stmt = (
             select(TradeModel)
             .where(*where_clauses)
-            .order_by(TradeModel.exit_datetime.asc())
+            .order_by(TradeModel.exit_datetime.desc().nulls_last())
             .limit(page_size)
             .offset(offset)
         )

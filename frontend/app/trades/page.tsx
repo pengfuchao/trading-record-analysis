@@ -157,6 +157,8 @@ export default function TradesPage() {
                 <th className="text-left px-4 py-3">Setup</th>
                 <th className="text-left px-4 py-3">Result</th>
                 <th className="text-right px-4 py-3">Net PnL</th>
+                <th className="text-right px-4 py-3">SL</th>
+                <th className="text-right px-4 py-3">TP</th>
                 <th className="text-right px-4 py-3">R</th>
                 <th className="text-right px-4 py-3">Lots</th>
               </tr>
@@ -182,6 +184,12 @@ export default function TradesPage() {
                   </td>
                   <td className={`px-4 py-3 text-right font-mono ${pnlColor(t.net_pnl)}`}>
                     {fmtPnl(t.net_pnl)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-gray-400">
+                    {t.stop_loss != null ? fmt(t.stop_loss, 4) : <span className="text-gray-700">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-gray-400">
+                    {t.take_profit != null ? fmt(t.take_profit, 4) : <span className="text-gray-700">—</span>}
                   </td>
                   <td className={`px-4 py-3 text-right font-mono ${pnlColor(t.actual_r_multiple)}`}>
                     {fmt(t.actual_r_multiple)}

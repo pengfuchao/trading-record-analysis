@@ -221,7 +221,61 @@ class MT5Connector:
         )
         return list(deals)
 
-    def reconstruct_positions(self, deals: List[Any]) -> List[Dict[str, Any]]:
+    def fetch_orders_sl_tp(
+        self, from_date: datetime, to_date: datetime
+    ) -> Dict[int, tuple]:
+        """
+        Build a position_id → (sl, tp) lookup from historical orders.
+
+        MT5 deals (history_deals_get) do NOT carry sl/tp — those fields live on
+        TradeOrders (history_orders_get).  This method fetches the full order
+        history for the same date window, groups by position_id, and returns the
+        earliest order's sl/tp for each position as the intended entry SL/TP.
+
+        Returns {} on failure (non-fatal: sync continues without SL/TP data).
+        """
+        try:
+            orders = mt5.history_orders_get(from_date, to_date)
+        except Exception as exc:
+            logger.warning("history_orders_get failed — SL/TP will be None: %s", exc)
+            return {}
+
+        if orders is None:
+            logger.warning(
+                "history_orders_get returned None (%s) — SL/TP will be None",
+                mt5.last_error(),
+            )
+            return {}
+
+        # Build position_id → earliest order's (sl, tp).
+        # We want the opening order's SL/TP, which has the lowest time_setup.
+        by_position: Dict[int, Any] = {}
+        for order in orders:
+            pos_id = getattr(order, "position_id", None)
+            if pos_id is None:
+                continue
+            existing = by_position.get(pos_id)
+            order_time = getattr(order, "time_setup", 0)
+            if existing is None or order_time < getattr(existing, "time_setup", 0):
+                by_position[pos_id] = order
+
+        result: Dict[int, tuple] = {}
+        for pos_id, order in by_position.items():
+            sl = getattr(order, "sl", 0.0) or None
+            tp = getattr(order, "tp", 0.0) or None
+            result[pos_id] = (sl, tp)
+
+        logger.info(
+            "Fetched SL/TP from %d orders → %d unique position(s)",
+            len(orders), len(result),
+        )
+        return result
+
+    def reconstruct_positions(
+        self,
+        deals: List[Any],
+        orders_sl_tp: Optional[Dict[int, tuple]] = None,
+    ) -> List[Dict[str, Any]]:
         """
         Group deals by position_id and reconstruct closed positions.
 
@@ -324,14 +378,17 @@ class MT5Connector:
                 exit_price = last_out.price  # fallback: no volume data
 
             # Entry from IN deal.
-            # NOTE: sl/tp are NOT fields on TradeDeal (history_deals_get) — they live on
-            # TradeOrder (history_orders_get). Fetching the matching order would require
-            # a second API call keyed on in_deal.order; deferred to Phase 2. Until then,
-            # sl/tp are None for all MT5-synced trades (same as CSV imports without those cols).
+            # sl/tp live on TradeOrders (history_orders_get), not on TradeDeal.
+            # If the caller provides orders_sl_tp (position_id → (sl, tp) from
+            # fetch_orders_sl_tp), use that; otherwise fall back to the deal
+            # attribute (present in some MT5 builds as 0.0 when unset → None).
             entry_time = datetime.utcfromtimestamp(in_deal.time)
             entry_price = in_deal.price
-            sl = getattr(in_deal, "sl", 0.0) or None   # 0.0 → None; missing attr → None
-            tp = getattr(in_deal, "tp", 0.0) or None   # 0.0 → None; missing attr → None
+            if orders_sl_tp and pos_id in orders_sl_tp:
+                sl, tp = orders_sl_tp[pos_id]
+            else:
+                sl = getattr(in_deal, "sl", 0.0) or None
+                tp = getattr(in_deal, "tp", 0.0) or None
 
             partial_close_count = sum(
                 1 for d in out_deals

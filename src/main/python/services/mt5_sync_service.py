@@ -173,8 +173,12 @@ class MT5SyncService:
                 deals = conn.fetch_deals(from_date, to_date)
                 result.deals_fetched = len(deals)
 
+                # Fetch SL/TP from orders — deals don't carry these fields.
+                # Non-fatal: returns {} if history_orders_get fails or is unavailable.
+                orders_sl_tp = conn.fetch_orders_sl_tp(from_date, to_date)
+
                 # Reconstruct closed positions from deal groups
-                positions = conn.reconstruct_positions(deals)
+                positions = conn.reconstruct_positions(deals, orders_sl_tp=orders_sl_tp)
                 result.positions_built = len(positions)
 
                 # Normalize to Trade domain objects
