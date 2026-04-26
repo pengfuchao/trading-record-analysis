@@ -53,8 +53,9 @@ Before starting ANY task, respond with:
 - No automated backup schedule — `backup.ps1`/`backup.sh` exist but must be run manually
 
 ### Next Direction (no phase assigned yet)
-Highest-value candidates:
-1. Empty-state guidance on Trades, Plans, Daily, Coaching pages (onboarding polish)
+No specific high-priority gap remains. Possible candidates:
+- Extend Playwright E2E tests with real-data backend integration coverage
+- Add automated backup scheduling documentation (cron / Task Scheduler)
 
 ---
 
