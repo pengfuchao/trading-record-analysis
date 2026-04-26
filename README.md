@@ -41,9 +41,13 @@ A full-stack web app that gives you a structured way to:
 | MT5 live sync — open positions snapshot on each sync | Done |
 | MT5 live sync — partial close (INOUT) reconstruction | Done |
 | MT5 live sync — background polling (APScheduler, per-account interval) | Done |
+| MT5 live sync — configurable lookback window (`lookback_days`) per account | Done |
+| MT5 scheduler resilience — alert cooldown, polling jitter, single-worker advisory | Done |
 | MT5 data freshness UX — Fresh/Stale/Delayed/Error badge on /mt5-sync and dashboard | Done |
 | Telegram push notifications (MT5 sync, FTMO alerts, coaching generated) | Done |
 | Telegram structured write-in (`/plan`, `/journal`, `/status`, `/ping`) | Done |
+| Trade CSV export — `GET /accounts/{id}/trades/export/csv` with active filters | Done |
+| Backup + restore scripts (`backup.ps1`/`sh`, `restore.ps1`/`sh`) | Done |
 
 ## Tech Stack
 
@@ -143,6 +147,23 @@ Database data persists in a named Docker volume `pgdata`. To reset the database:
 ```bash
 docker compose down -v   # WARNING: destroys all data
 docker compose up --build
+```
+
+### Backup and restore
+
+```bash
+# Backup (Docker db must be running) — saves to backups/ with timestamp
+.\backup.ps1           # Windows PowerShell
+bash backup.sh         # WSL/Linux
+
+# Restore from a backup file
+.\restore.ps1 -BackupFile backups\backup_YYYYMMDD_HHMMSS.sql   # Windows
+bash restore.sh backups/backup_YYYYMMDD_HHMMSS.sql              # WSL/Linux
+```
+
+After restoring, restart the backend to pick up the new data:
+```bash
+docker compose restart backend
 ```
 
 ### Deploying to a remote host
@@ -329,8 +350,10 @@ The webhook rejects messages from any chat_id that doesn't match `TELEGRAM_CHAT_
 
 GitHub Actions runs on every push and pull request to `main`:
 
-- **Backend tests** — full pytest suite (`src/test/unit/` + `src/test/integration/`) against SQLite
+- **Backend tests (SQLite)** — full pytest suite (`src/test/unit/` + `src/test/integration/`) against SQLite
+- **Postgres migration check** — spins up Postgres 15, runs `alembic upgrade head`, then 9 migration + ORM smoke tests; catches schema issues that SQLite silently misses
 - **Frontend typecheck** — `tsc --noEmit` on the Next.js codebase
+- **Frontend E2E** — 8 Playwright smoke tests with mocked API (no backend required); verifies pages render and navigation works
 
 See `.github/workflows/ci.yml`.
 
@@ -403,9 +426,11 @@ See `RPD.md` for the full product roadmap.
 
 | Priority | Area |
 |---|---|
-| Next | Target-hit vs stop-hit decomposition |
+| Next | Fix `CORS_ORIGINS` to be configurable via `.env` for remote deploys |
+| Next | Add Telegram webhook route tests |
+| Next | Empty-state onboarding messages on Trades, Plans, Daily, Coaching pages |
+| Later | Target-hit vs stop-hit decomposition |
 | Later | Entry quality vs exit quality decomposition |
-| Later | Richer MT5 sync status / freshness UX |
 | Later | Screenshot / image attachment upload |
 | Later | AI provider abstraction (OpenAI / Gemini option) |
 | Later | Multi-user authentication |

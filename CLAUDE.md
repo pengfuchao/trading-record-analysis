@@ -25,21 +25,22 @@ Before starting ANY task, respond with:
 
 ---
 
-## Project Status (as of 2026-04-24)
+## Project Status (as of 2026-04-26)
 
-### Maturity: 7 / 10 — Feature-complete, operationally solid, some polish gaps remain
+### Maturity: 9 / 10 — Feature-complete, test coverage solid, ops hardened
 
 ### Completed Phases
-All 6 build phases are done:
 - **Phase 1** — Core backend (accounts, trades, CSV import, analytics, PostgreSQL)
 - **Phase 2** — Frontend (Next.js 14, all pages wired to real API data)
 - **Phase 3** — Coaching, MT5 sync, Telegram
 - **Phase 4** — Trade plans, daily plans/reviews, plan-adherence analytics
 - **Phase 5** — Advanced analytics (R:R trend, behavioral trend, exit decomposition, entry/exit quality)
 - **Phase 6** — Deployment hardening (Docker Compose, alembic shadow-package fix, port 5432 published, API base URL fix, TypeScript build errors resolved)
-
-### Next Phase: Phase 7 — Ops Hardening + Onboarding Fix
-Key tasks: fix broken README backend install instructions (wrong requirements.txt path, wrong uvicorn cwd), write `start-local-backend.ps1`/`.sh` scripts, replace 4 `alert()` calls in `app/daily/page.tsx` with inline banners, add onboarding prompt on empty dashboard, fix `datetime.utcnow()` → `datetime.now(timezone.utc)` deprecation, document `pg_dump` backup flow.
+- **Phase 7** — Ops hardening + onboarding fix (README rewrite, startup scripts, alert()→banners, dashboard empty state, datetime deprecation)
+- **Phase 8** — HTTP route test coverage (59 route tests across 8 groups, zero `datetime.utcnow()` remaining)
+- **Phase 9** — MT5 scheduler resilience (alert cooldown 4h, polling jitter 0–30s, `lookback_days` configurable, single-worker startup advisory)
+- **Phase 10** — MT5 `lookback_days` UI + `GET /accounts/{id}/trades/export/csv` + `backup.ps1`/`backup.sh`
+- **Phase 11** — CI hardening: Postgres 15 CI job (migration + ORM smoke tests), Playwright E2E (8 tests, mocked API), `restore.ps1`/`restore.sh`
 
 ### Strongest Modules
 1. `core/account_analytics.py` + `core/metrics_calculator.py` — 15+ metric families, no stubs
@@ -47,12 +48,17 @@ Key tasks: fix broken README backend install instructions (wrong requirements.tx
 3. `api/routes/` — full CRUD on all entities; 50+ endpoints; analytics is read-only/extensive
 4. Frontend `app/dashboard/page.tsx` — 15 wired panels, no fake data
 
-### Known Weak / Rough Areas
-- **Zero HTTP route tests** — the API surface has no regression protection at the HTTP layer; only core logic is tested
-- `datetime.utcnow()` used in `models/db_models.py` and `services/mt5_scheduler.py` — deprecated in Python 3.12+
-- 4 `alert()` calls in `app/daily/page.tsx` (delete/create error paths) — inconsistent with every other page which uses inline banners
-- CI tests against SQLite only — Postgres-specific issues can slip through
-- No `pg_dump` backup story — `docker compose down -v` destroys all data
+### Current Weak / Rough Areas
+- `CORS_ORIGINS` hardcoded in `docker-compose.yml` — can't override via `.env` for remote deploys
+- Telegram webhook has no HTTP route tests — chat_id guard regression would be invisible
+- Frontend E2E tests use mocked API only — no real-data end-to-end coverage
+- No automated backup schedule — `backup.ps1`/`backup.sh` exist but must be run manually
+
+### Next Direction (no phase assigned yet)
+Highest-value candidates:
+1. Fix `CORS_ORIGINS` to use `${CORS_ORIGINS:-http://localhost:3000}` in compose (5-min change)
+2. Add Telegram webhook route tests (same pattern as existing `test_routes.py`)
+3. Empty-state guidance on Trades, Plans, Daily, Coaching pages (onboarding polish)
 
 ---
 
@@ -87,11 +93,13 @@ docker compose stop backend
 # 3. Ensure .env has Docker Postgres credentials:
 #    DATABASE_URL=postgresql+psycopg2://trading:trading@localhost:5432/trading_journal
 
-# 4. Run migrations if needed (PYTHONPATH must be repo root)
-$env:PYTHONPATH = "."
-python -m alembic upgrade head
+# 4. Run migrations if needed
+#    Use the alembic binary directly — python -m alembic fails because the
+#    local alembic/ migration directory shadows the installed package.
+alembic upgrade head
 
-# 5. Start local backend (PYTHONPATH already set)
+# 5. Start local backend (PYTHONPATH must be repo root for src.main.python.* imports)
+$env:PYTHONPATH = "."
 python -m uvicorn src.main.python.api.app:app --reload --host 0.0.0.0 --port 8000
 
 # 6. Verify DB connection
@@ -153,6 +161,17 @@ docker compose up --build
 # Health / readiness checks
 curl http://localhost:8000/health
 curl http://localhost:8000/ready
+
+# Run Playwright E2E tests (first time: cd frontend && npx playwright install chromium)
+cd frontend && npm run test:e2e
+
+# Backup database (Docker db service must be running)
+.\backup.ps1                                              # Windows PowerShell → backups/
+bash backup.sh                                            # WSL/Linux
+
+# Restore from backup
+.\restore.ps1 -BackupFile backups\backup_YYYYMMDD.sql    # Windows
+bash restore.sh backups/backup_YYYYMMDD.sql               # WSL/Linux
 ```
 
 ---

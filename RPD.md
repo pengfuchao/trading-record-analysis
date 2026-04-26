@@ -1,9 +1,9 @@
 # Product Requirements Document
 ## Trading Record Analysis — MVP+ State and Future Roadmap
 
-**Document version:** 2.1  
-**Last updated:** 2026-04-21  
-**Status:** Active development — MVP+ complete, consolidation pass done, deeper analytics next
+**Document version:** 2.2  
+**Last updated:** 2026-04-26  
+**Status:** Active development — test coverage and ops now solid; analytics depth is the next frontier
 
 ---
 
@@ -388,6 +388,45 @@ Expansion Phase 6 (DONE 2026-04-21)
         - Frontend: SetupRRTable ranked table on Setup Library page (n, planned R,
           realized R, shortfall, realization %, target hit %; signals at n >= 3)
 
+Phase 7 (DONE 2026-04-25)
+  └── Ops hardening + onboarding fix
+        - README rewritten (correct install paths, two-mode setup guide)
+        - start-local-backend.ps1 / .sh startup scripts
+        - alert() calls replaced with inline error banners (daily/page.tsx)
+        - Dashboard empty-state onboarding form (CreateAccountCard)
+        - datetime.utcnow() → datetime.now(timezone.utc) everywhere
+
+Phase 8 (DONE 2026-04-25)
+  └── HTTP route test coverage
+        - 59 route tests across 8 groups (Health, Accounts, Trades, Trade Plans,
+          Analytics, Daily Plans, Setups, Coaching)
+        - FastAPI TestClient + dependency_overrides + SQLite in-memory
+        - All remaining datetime.utcnow() calls eliminated (sweep complete)
+
+Phase 9 (DONE 2026-04-26)
+  └── MT5 scheduler resilience
+        - Alert cooldown: repeated scheduled failures suppressed 4h after first alert;
+          resets automatically on sync success
+        - Polling jitter: 0–30s random start delay on job registration to prevent lockstep
+        - lookback_days column (migration 010) + API field + scheduler wired
+        - Startup advisory log for single-worker constraint
+
+Phase 10 (DONE 2026-04-26)
+  └── Export + ops closure
+        - lookback_days exposed in /mt5-sync config UI form
+        - GET /accounts/{id}/trades/export/csv (all matching trades, same filters as list, no pagination)
+        - Export CSV button on Trade Log page (filter-aware, plain <a download>)
+        - backup.ps1 + backup.sh (pg_dump → timestamped files in backups/)
+
+Phase 11 (DONE 2026-04-26)
+  └── CI hardening + restore
+        - Postgres 15 CI job: alembic upgrade head + 9 migration/ORM smoke tests;
+          catches schema issues SQLite silently misses
+        - Frontend E2E: Playwright @1.59, 8 smoke tests, mocked API, CI job;
+          verifies pages render and sidebar navigation works without a real backend
+        - restore.ps1 + restore.sh (symmetric with backup scripts; confirmation prompt;
+          restart hint on success)
+
 Later
   └── MT4 EA bridge
   └── AI provider abstraction
@@ -411,9 +450,12 @@ Later
 
 | Constraint | Notes |
 |---|---|
-| MT5 live sync Phase C (background polling) implemented | APScheduler starts at app boot and schedules one IntervalJob per enabled account. Partial closes (INOUT) are aggregated into single trade records. No DB migration needed. |
+| MT5 live sync Phase C (background polling) implemented | APScheduler starts at app boot and schedules one IntervalJob per enabled account. Partial closes (INOUT) are aggregated into single trade records. Alert cooldown (4h) + jitter (0–30s) prevent spam and lockstep polling. |
+| CI now covers both SQLite and Postgres 15 | `postgres-migration-check` job: runs `alembic upgrade head` + 9 ORM smoke tests on real Postgres. SQLite job remains for fast unit + integration test feedback. |
+| Backup/restore scripts available | `backup.ps1`/`backup.sh` + `restore.ps1`/`restore.sh` at repo root. Must be run manually — no automated schedule yet. |
 | No authentication | Single-user local deployment. Do not expose to public internet without adding auth. |
 | Coaching quality depends on trade data quality | Sparse trades or missing setup_type values reduce coaching signal. |
 | MT4 live sync path is fragile | EA-based bridges are platform-version-sensitive and hard to maintain. |
 | Telegram bot Phase B requires NLP robustness | Poorly structured commands can create bad journal data silently. |
 | plan_adherence analytics require consistent plan linking | If traders don't link plans to trades, the signal is weak. |
+| CORS_ORIGINS hardcoded in docker-compose | Cannot override via `.env` for remote deploys without compose restructuring. |
