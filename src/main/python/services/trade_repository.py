@@ -439,3 +439,97 @@ class TradeRepository:
             "trades_updated_session": updated_session,
             "trades_skipped_session": skipped_session,
         }
+
+    def enrich_sl_tp(
+        self,
+        account_id: str,
+        parsed_trades: List[Trade],
+    ) -> dict:
+        """
+        Use SL/TP values from a parsed CSV to fill missing stop_loss / take_profit
+        on trades already in the DB.  Never creates new trades, never overwrites
+        existing values.
+
+        Matching: by trade_id (MT5 Position number / MT4 Ticket — exact match).
+
+        Returns a summary dict:
+          rows_in_csv    — trade rows successfully parsed from CSV
+          matched        — rows whose trade_id exists in DB for this account
+          sl_filled      — stop_loss written (was NULL, CSV provided a value)
+          tp_filled      — take_profit written (was NULL, CSV provided a value)
+          r_computed     — actual_r_multiple recomputed after sl_filled
+          already_had_sl — matched trades where stop_loss was already set
+          not_in_db      — rows whose trade_id was not found in this account
+        """
+        if not parsed_trades:
+            return {
+                "rows_in_csv": 0, "matched": 0, "sl_filled": 0,
+                "tp_filled": 0, "r_computed": 0, "already_had_sl": 0, "not_in_db": 0,
+            }
+
+        candidate_ids = [t.trade_id for t in parsed_trades]
+        existing_ids = self.get_existing_trade_ids(account_id, candidate_ids)
+
+        counts = {
+            "rows_in_csv": len(parsed_trades),
+            "matched": 0,
+            "sl_filled": 0,
+            "tp_filled": 0,
+            "r_computed": 0,
+            "already_had_sl": 0,
+            "not_in_db": 0,
+        }
+
+        for csv_trade in parsed_trades:
+            if csv_trade.trade_id not in existing_ids:
+                counts["not_in_db"] += 1
+                logger.debug(
+                    "Enrich: trade_id=%s not in DB for account=%s",
+                    csv_trade.trade_id, account_id,
+                )
+                continue
+
+            orm_obj = self._session.get(TradeModel, csv_trade.trade_id)
+            if orm_obj is None or orm_obj.account_id != account_id:
+                counts["not_in_db"] += 1
+                continue
+
+            counts["matched"] += 1
+
+            # Fill stop_loss only when DB value is missing and CSV has one.
+            if orm_obj.stop_loss is None and csv_trade.stop_loss is not None:
+                orm_obj.stop_loss = csv_trade.stop_loss
+                counts["sl_filled"] += 1
+                # Recompute R immediately — SL was just provided.
+                new_r = _price_based_r(
+                    orm_obj.exit_price, orm_obj.entry_price,
+                    orm_obj.stop_loss, orm_obj.direction,
+                )
+                if new_r is not None:
+                    orm_obj.actual_r_multiple = new_r
+                    counts["r_computed"] += 1
+                logger.info(
+                    "Enrich: filled stop_loss=%s r=%s for trade_id=%s",
+                    csv_trade.stop_loss, new_r, csv_trade.trade_id,
+                )
+            elif orm_obj.stop_loss is not None:
+                counts["already_had_sl"] += 1
+
+            # Fill take_profit independently — handled even when SL was already set.
+            if orm_obj.take_profit is None and csv_trade.take_profit is not None:
+                orm_obj.take_profit = csv_trade.take_profit
+                counts["tp_filled"] += 1
+                logger.info(
+                    "Enrich: filled take_profit=%s for trade_id=%s",
+                    csv_trade.take_profit, csv_trade.trade_id,
+                )
+
+        self._session.flush()
+        logger.info(
+            "SL/TP enrichment account=%s: rows=%d matched=%d sl_filled=%d "
+            "tp_filled=%d r_computed=%d already_had_sl=%d not_in_db=%d",
+            account_id, counts["rows_in_csv"], counts["matched"],
+            counts["sl_filled"], counts["tp_filled"], counts["r_computed"],
+            counts["already_had_sl"], counts["not_in_db"],
+        )
+        return counts

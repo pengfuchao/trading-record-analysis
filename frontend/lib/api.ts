@@ -74,6 +74,8 @@ export const api = {
     uploadFile<ImportPreviewResponse>(`/accounts/${accountId}/import/preview`, file),
   importCsv: (accountId: string, file: File, duplicateStrategy: string) =>
     uploadFile<ImportResponse>(`/accounts/${accountId}/import`, file, { duplicate_strategy: duplicateStrategy }),
+  enrichSlTp: (accountId: string, file: File) =>
+    uploadFile<EnrichSLTPResponse>(`/accounts/${accountId}/import/enrich-sl-tp`, file),
 
   // Coaching
   generateWeeklyReview: (accountId: string, params?: { from_date?: string; to_date?: string }) => {
@@ -756,6 +758,19 @@ export interface RecomputeResponse {
   trades_skipped_r: number;
   trades_updated_session: number;
   trades_skipped_session: number;
+}
+
+export interface EnrichSLTPResponse {
+  account_id: string;
+  detected_platform: string;
+  rows_in_csv: number;
+  matched: number;
+  sl_filled: number;
+  tp_filled: number;
+  r_computed: number;
+  already_had_sl: number;
+  not_in_db: number;
+  skipped_rows: { row_index: number; trade_id?: string; reason: string }[];
 }
 
 export interface MistakeInsight {

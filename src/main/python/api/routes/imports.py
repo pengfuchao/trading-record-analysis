@@ -11,6 +11,7 @@ from src.main.python.api.dependencies import (
     get_account_repo, get_db, get_parser, get_trade_repo, require_account,
 )
 from src.main.python.api.schemas.imports import (
+    EnrichSLTPResponse,
     ImportPreviewResponse, ImportPreviewRow,
     ImportResponse, RecomputeResponse, SkippedRowInfo, ValidationErrorInfo,
 )
@@ -92,6 +93,55 @@ def recompute_derived(
         broker_utc_offset=broker_utc_offset,
     )
     return RecomputeResponse(**result)
+
+
+# ── SL/TP enrichment from CSV ─────────────────────────────────────────────────
+
+@router.post("/{account_id}/import/enrich-sl-tp", response_model=EnrichSLTPResponse)
+async def enrich_sl_tp(
+    account_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    parser: MTCSVParser = Depends(get_parser),
+):
+    """
+    Use an FTMO / MT4 / MT5 exported CSV to fill missing stop_loss and
+    take_profit for trades already in the DB, then recompute actual_r_multiple.
+
+    Safe by design:
+    - Never creates new trades (only enriches existing rows).
+    - Never overwrites stop_loss or take_profit when already set.
+    - Matching is exact: trade_id (MT5 Position number / MT4 Ticket).
+    - actual_r_multiple is recomputed only for trades where stop_loss was just filled.
+
+    The response counts explain exactly what happened:
+    - matched        → trade_id found in DB
+    - sl_filled      → stop_loss was NULL, CSV provided a value
+    - tp_filled      → take_profit was NULL, CSV provided a value
+    - r_computed     → R recomputed after SL was filled
+    - already_had_sl → matched but SL was already present (no change)
+    - not_in_db      → CSV row whose trade_id is not in this account's DB
+    """
+    account_repo = get_account_repo(db)
+    trade_repo = get_trade_repo(db)
+    account = require_account(account_id, account_repo)
+
+    content = await file.read()
+    tmp_path = _write_temp(content)
+    try:
+        trades = parser.parse(tmp_path, account)
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    counts = trade_repo.enrich_sl_tp(account_id, trades)
+
+    return EnrichSLTPResponse(
+        account_id=account_id,
+        detected_platform=parser.detected_platform or "unknown",
+        skipped_rows=_skipped_list(parser),
+        **counts,
+    )
 
 
 # ── Preview (parse without saving) ────────────────────────────────────────────

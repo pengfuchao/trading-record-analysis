@@ -416,3 +416,103 @@ class TestTradeRepository:
         assert found.symbol is None
         assert found.net_pnl is None
         assert found.mistake_tags == []
+
+
+# ── enrich_sl_tp ──────────────────────────────────────────────────────────────
+
+class TestEnrichSLTP:
+    """
+    Each test verifies a specific safety or correctness property of
+    TradeRepository.enrich_sl_tp().
+    """
+
+    def _setup(self, trade_repo, account_repo, session, **trade_kwargs):
+        account_repo.save(make_account())
+        session.commit()
+        trade = make_trade(stop_loss=None, take_profit=None, actual_r_multiple=None, **trade_kwargs)
+        trade_repo.save(trade)
+        session.commit()
+        return trade
+
+    def _csv_trade(self, trade_id="T001", stop_loss=1.0780, take_profit=1.0980):
+        return Trade(
+            trade_id=trade_id,
+            account_id="ACC001",
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+        )
+
+    def test_fills_missing_sl_from_csv(self, trade_repo, account_repo, session):
+        self._setup(trade_repo, account_repo, session)
+        counts = trade_repo.enrich_sl_tp("ACC001", [self._csv_trade(stop_loss=1.0780)])
+        found = trade_repo.get_by_id("T001")
+        assert found.stop_loss == pytest.approx(1.0780)
+        assert counts["sl_filled"] == 1
+
+    def test_fills_missing_tp_from_csv(self, trade_repo, account_repo, session):
+        self._setup(trade_repo, account_repo, session)
+        counts = trade_repo.enrich_sl_tp("ACC001", [self._csv_trade(take_profit=1.0980)])
+        found = trade_repo.get_by_id("T001")
+        assert found.take_profit == pytest.approx(1.0980)
+        assert counts["tp_filled"] == 1
+
+    def test_recomputes_r_after_sl_filled(self, trade_repo, account_repo, session):
+        # entry=1.0850 exit=1.0920 → move=0.007; sl=1.0780 → dist=0.007; R=1.0
+        self._setup(trade_repo, account_repo, session,
+                    entry_price=1.0850, exit_price=1.0920, direction=Direction.LONG)
+        counts = trade_repo.enrich_sl_tp("ACC001", [self._csv_trade(stop_loss=1.0780)])
+        found = trade_repo.get_by_id("T001")
+        assert found.actual_r_multiple == pytest.approx(1.0)
+        assert counts["r_computed"] == 1
+
+    def test_does_not_overwrite_existing_sl(self, trade_repo, account_repo, session):
+        account_repo.save(make_account())
+        session.commit()
+        trade = make_trade(stop_loss=1.0800, take_profit=None, actual_r_multiple=None)
+        trade_repo.save(trade)
+        session.commit()
+        counts = trade_repo.enrich_sl_tp("ACC001", [self._csv_trade(stop_loss=1.0750)])
+        found = trade_repo.get_by_id("T001")
+        assert found.stop_loss == pytest.approx(1.0800)  # original value preserved
+        assert counts["already_had_sl"] == 1
+        assert counts["sl_filled"] == 0
+
+    def test_does_not_create_new_trade_for_unmatched_id(self, trade_repo, account_repo, session):
+        account_repo.save(make_account())
+        session.commit()
+        counts = trade_repo.enrich_sl_tp("ACC001", [self._csv_trade(trade_id="GHOST-999")])
+        assert trade_repo.get_by_id("GHOST-999") is None
+        assert counts["not_in_db"] == 1
+        assert counts["matched"] == 0
+
+    def test_fills_tp_even_when_sl_already_set(self, trade_repo, account_repo, session):
+        """TP enrichment is independent — happens even when SL was already present."""
+        account_repo.save(make_account())
+        session.commit()
+        trade = make_trade(stop_loss=1.0800, take_profit=None, actual_r_multiple=None)
+        trade_repo.save(trade)
+        session.commit()
+        counts = trade_repo.enrich_sl_tp("ACC001", [self._csv_trade(stop_loss=1.0750, take_profit=1.0980)])
+        found = trade_repo.get_by_id("T001")
+        assert found.take_profit == pytest.approx(1.0980)  # TP filled
+        assert found.stop_loss == pytest.approx(1.0800)    # SL unchanged
+        assert counts["tp_filled"] == 1
+        assert counts["already_had_sl"] == 1
+
+    def test_returns_correct_count_summary(self, trade_repo, account_repo, session):
+        account_repo.save(make_account())
+        session.commit()
+        trade_repo.save(make_trade(trade_id="T001", stop_loss=None, take_profit=None))
+        trade_repo.save(make_trade(trade_id="T002", account_id="ACC001", stop_loss=1.08))
+        session.commit()
+        csv_trades = [
+            self._csv_trade(trade_id="T001", stop_loss=1.0780),
+            self._csv_trade(trade_id="T002", stop_loss=1.0750),
+            self._csv_trade(trade_id="GHOST", stop_loss=1.0000),
+        ]
+        counts = trade_repo.enrich_sl_tp("ACC001", csv_trades)
+        assert counts["rows_in_csv"] == 3
+        assert counts["matched"] == 2
+        assert counts["sl_filled"] == 1      # T001 got SL
+        assert counts["already_had_sl"] == 1  # T002 already had SL
+        assert counts["not_in_db"] == 1      # GHOST not in DB

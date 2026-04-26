@@ -53,6 +53,30 @@ class RecomputeResponse(BaseModel):
     trades_skipped_session: int     # session already manually set (skipped when overwrite_session=False)
 
 
+class EnrichSLTPResponse(BaseModel):
+    """
+    Result of POST /accounts/{id}/import/enrich-sl-tp.
+
+    Counts explain what happened to each row in the CSV:
+      matched       — trade_id found in DB for this account
+      sl_filled     — stop_loss was NULL and CSV provided a non-zero value
+      tp_filled     — take_profit was NULL and CSV provided a non-zero value
+      r_computed    — actual_r_multiple was recomputed after sl_filled
+      already_had_sl — matched but stop_loss was already set (not changed)
+      not_in_db     — trade_id in CSV was not found in DB for this account
+    """
+    account_id: str
+    detected_platform: str
+    rows_in_csv: int
+    matched: int
+    sl_filled: int
+    tp_filled: int
+    r_computed: int
+    already_had_sl: int
+    not_in_db: int
+    skipped_rows: List[SkippedRowInfo]
+
+
 class ImportResponse(BaseModel):
     account_id: str
     import_run_id: str

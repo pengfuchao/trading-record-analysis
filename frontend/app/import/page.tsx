@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { mutate } from "swr";
-import { api, ImportPreviewResponse, ImportResponse, RecomputeResponse } from "@/lib/api";
+import { api, EnrichSLTPResponse, ImportPreviewResponse, ImportResponse, RecomputeResponse } from "@/lib/api";
 import { useAccount } from "@/components/AccountProvider";
 import AccountSelector from "@/components/AccountSelector";
 import { fmtDateTime, fmtPnl, fmt, pnlColor } from "@/lib/utils";
@@ -24,6 +24,10 @@ export default function ImportPage() {
   const [dragging, setDragging] = useState(false);
   const [recomputeState, setRecomputeState] = useState<"idle" | "running" | "done" | "error">("idle");
   const [recomputeResult, setRecomputeResult] = useState<RecomputeResponse | null>(null);
+  const enrichFileRef = useRef<HTMLInputElement>(null);
+  const [enrichState, setEnrichState] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [enrichResult, setEnrichResult] = useState<EnrichSLTPResponse | null>(null);
+  const [enrichError, setEnrichError] = useState<string | null>(null);
 
   const handleFile = useCallback(
     async (f: File) => {
@@ -105,6 +109,27 @@ export default function ImportPage() {
     }
   };
 
+  const handleEnrich = async (f: File) => {
+    if (!accountId) return;
+    setEnrichState("running");
+    setEnrichError(null);
+    setEnrichResult(null);
+    try {
+      const data = await api.enrichSlTp(accountId, f);
+      setEnrichResult(data);
+      setEnrichState("done");
+      // Refresh trade list and analytics — SL/TP/R may have changed
+      const pfx = (p: string) => (k: unknown) => typeof k === "string" && k.startsWith(p);
+      mutate(pfx(`trades-${accountId}`));
+      mutate(pfx(`analytics-${accountId}`));
+    } catch (e: any) {
+      setEnrichError(e.message ?? "Enrichment failed");
+      setEnrichState("error");
+    } finally {
+      if (enrichFileRef.current) enrichFileRef.current.value = "";
+    }
+  };
+
   const reset = () => {
     setStage("idle");
     setIsImporting(false);
@@ -114,7 +139,11 @@ export default function ImportPage() {
     setError(null);
     setRecomputeState("idle");
     setRecomputeResult(null);
+    setEnrichState("idle");
+    setEnrichResult(null);
+    setEnrichError(null);
     if (fileRef.current) fileRef.current.value = "";
+    if (enrichFileRef.current) enrichFileRef.current.value = "";
   };
 
   return (
@@ -393,6 +422,76 @@ export default function ImportPage() {
               <p className="text-yellow-400 text-xs">All trades already imported. Switch to "Update broker fields" to re-sync.</p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── Enrich SL/TP from CSV ─────────────────────────────────────────── */}
+      {accountId && (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-gray-200">Enrich SL / TP from CSV</p>
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+              Upload an FTMO / MT5 / MT4 exported statement to fill missing stop_loss and
+              take_profit for trades already in the log. R is recomputed automatically.
+              Existing values are never overwritten. No duplicate trades are created.
+            </p>
+          </div>
+
+          {enrichError && (
+            <p className="text-xs text-red-400">{enrichError}</p>
+          )}
+
+          {enrichState === "idle" || enrichState === "error" ? (
+            <label className="cursor-pointer inline-flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+              <input
+                ref={enrichFileRef}
+                type="file"
+                accept=".csv"
+                className="sr-only"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleEnrich(f);
+                }}
+              />
+              Upload CSV to enrich →
+            </label>
+          ) : enrichState === "running" ? (
+            <span className="flex items-center gap-2 text-sm text-gray-400">
+              <span className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              Enriching…
+            </span>
+          ) : enrichResult && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                <div className="text-center">
+                  <p className="text-xl font-semibold text-green-400">{enrichResult.sl_filled}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">SL filled</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xl font-semibold text-green-400">{enrichResult.tp_filled}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">TP filled</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xl font-semibold text-blue-400">{enrichResult.r_computed}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">R computed</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xl font-semibold text-gray-400">{enrichResult.not_in_db}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Not in DB</p>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                {enrichResult.rows_in_csv} rows read ({enrichResult.detected_platform}) ·{" "}
+                {enrichResult.matched} matched · {enrichResult.already_had_sl} already had SL
+              </p>
+              <button
+                onClick={() => { setEnrichState("idle"); setEnrichResult(null); }}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                Enrich another file
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
