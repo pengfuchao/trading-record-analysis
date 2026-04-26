@@ -35,6 +35,51 @@ jobs:
       - name: Run integration tests
         run: python -m pytest src/test/integration/ -v --tb=short
 
+  postgres-migration-check:
+    name: Postgres 15 — Migration + Smoke
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: trading
+          POSTGRES_PASSWORD: trading
+          POSTGRES_DB: trading_journal_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trading -d trading_journal_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+psycopg2://trading:trading@localhost:5432/trading_journal_ci
+      TELEGRAM_ENABLED: "false"
+      ANTHROPIC_API_KEY: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply migrations (alembic upgrade head)
+        run: python -m alembic upgrade head
+
+      - name: Run unit tests against Postgres URL
+        run: python -m pytest src/test/unit/ -v --tb=short
+
+      - name: Run Postgres smoke tests
+        run: python -m pytest src/test/integration/test_postgres_smoke.py -v --tb=short
+
   frontend-typecheck:
     name: Frontend TypeScript Check
     runs-on: ubuntu-latest
