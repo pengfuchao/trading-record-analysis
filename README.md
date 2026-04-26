@@ -426,7 +426,6 @@ See `RPD.md` for the full product roadmap.
 
 | Priority | Area |
 |---|---|
-| Next | Add Telegram webhook route tests |
 | Next | Empty-state onboarding messages on Trades, Plans, Daily, Coaching pages |
 | Later | Target-hit vs stop-hit decomposition |
 | Later | Entry quality vs exit quality decomposition |

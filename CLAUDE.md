@@ -49,14 +49,12 @@ Before starting ANY task, respond with:
 4. Frontend `app/dashboard/page.tsx` — 15 wired panels, no fake data
 
 ### Current Weak / Rough Areas
-- Telegram webhook has no HTTP route tests — chat_id guard regression would be invisible
 - Frontend E2E tests use mocked API only — no real-data end-to-end coverage
 - No automated backup schedule — `backup.ps1`/`backup.sh` exist but must be run manually
 
 ### Next Direction (no phase assigned yet)
 Highest-value candidates:
-1. Add Telegram webhook route tests (same pattern as existing `test_routes.py`)
-2. Empty-state guidance on Trades, Plans, Daily, Coaching pages (onboarding polish)
+1. Empty-state guidance on Trades, Plans, Daily, Coaching pages (onboarding polish)
 
 ---
 
