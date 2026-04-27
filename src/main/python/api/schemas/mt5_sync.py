@@ -142,6 +142,12 @@ class BackfillSLTPRequest(BaseModel):
     )
 
 
+class MT5PasswordStatusResponse(BaseModel):
+    """Response for GET /accounts/{id}/mt5-config/password-status."""
+    env_var_name: str
+    present: bool
+
+
 class BackfillSLTPResponse(BaseModel):
     """
     Response for POST /accounts/{id}/mt5-sync/backfill-sl-tp.

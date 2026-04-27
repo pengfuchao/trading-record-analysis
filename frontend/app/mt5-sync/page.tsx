@@ -8,6 +8,7 @@ import {
   BackfillSLTPResponse,
   MT5Config,
   MT5ConfigCreate,
+  MT5PasswordStatus,
   MT5SyncResponse,
   MT5SyncStatus,
   OpenPositionsResponse,
@@ -184,6 +185,13 @@ export default function MT5SyncPage() {
     { revalidateOnFocus: false }
   );
 
+  // ── Password env var status SWR ──────────────────────────────────────────────
+  const { data: passwordStatus, mutate: refreshPasswordStatus } = useSWR<MT5PasswordStatus>(
+    accountId ? `mt5-password-status-${accountId}` : null,
+    () => api.getMt5PasswordStatus(accountId!),
+    { revalidateOnFocus: false }
+  );
+
   // ── Config form state ────────────────────────────────────────────────────────
   const [login, setLogin] = useState("");
   const [server, setServer] = useState("");
@@ -236,6 +244,7 @@ export default function MT5SyncPage() {
       await api.saveMt5Config(accountId, body);
       await refreshConfig();
       await refreshStatus();
+      await refreshPasswordStatus();
       setConfigSaved(true);
     } catch (e: any) {
       setConfigError2(e.message ?? "Save failed");
@@ -465,7 +474,20 @@ export default function MT5SyncPage() {
         {/* Password note */}
         {!configLoading && (
           <div className="bg-gray-800/50 border border-gray-700 rounded-md px-4 py-3 space-y-1">
-            <p className="text-xs text-gray-400 font-medium">Password — set via environment variable, never stored in DB</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-gray-400 font-medium">Password — set via environment variable, never stored in DB</p>
+              {passwordStatus ? (
+                <span className={`shrink-0 text-xs px-2 py-0.5 rounded font-medium border ${
+                  passwordStatus.present
+                    ? "bg-green-900/40 text-green-300 border-green-700/50"
+                    : "bg-red-900/40 text-red-300 border-red-700/50"
+                }`}>
+                  {passwordStatus.present ? "✓ Present" : "✗ Not found"}
+                </span>
+              ) : (
+                <span className="shrink-0 text-xs text-gray-600">checking…</span>
+              )}
+            </div>
             <p className="text-xs text-gray-500">
               On the backend server, set:
             </p>
@@ -473,7 +495,8 @@ export default function MT5SyncPage() {
               {envVarName(accountId)}=your_password
             </code>
             <p className="text-xs text-gray-600 mt-1">
-              Restart the backend after setting this variable. The sync will fail with a 422 error if the variable is missing.
+              The password is read from the backend environment and is never stored in the database.
+              Restart the backend after setting this variable.
             </p>
           </div>
         )}

@@ -14,6 +14,7 @@ Password convention:
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,6 +27,7 @@ from src.main.python.api.schemas.mt5_sync import (
     BackfillSLTPResponse,
     MT5ConfigCreate,
     MT5ConfigResponse,
+    MT5PasswordStatusResponse,
     MT5SyncRequest,
     MT5SyncResponse,
     MT5SyncRunSummary,
@@ -98,6 +100,30 @@ def get_mt5_config(
                    "Use POST /mt5-config to set one up.",
         )
     return MT5ConfigResponse.model_validate(cfg)
+
+
+@router.get(
+    "/accounts/{account_id}/mt5-config/password-status",
+    response_model=MT5PasswordStatusResponse,
+    summary="Check whether the MT5 password env var is present in the backend",
+)
+def get_password_status(
+    account_id: str,
+    account_repo: AccountRepository = Depends(_get_account_repo),
+) -> MT5PasswordStatusResponse:
+    """
+    Returns the computed env var name and whether that variable is currently set
+    in the backend process environment.
+
+    The password value is never returned — only a boolean presence check.
+    Useful for diagnosing first-setup silent failures where the env var is missing.
+    """
+    require_account(account_id, account_repo)
+    env_var = f"MT5_{account_id.upper().replace('-', '_').replace(' ', '_')}_PASSWORD"
+    return MT5PasswordStatusResponse(
+        env_var_name=env_var,
+        present=bool(os.environ.get(env_var)),
+    )
 
 
 # ── Sync trigger ───────────────────────────────────────────────────────────────

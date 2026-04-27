@@ -255,6 +255,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  getMt5PasswordStatus: (accountId: string) =>
+    request<MT5PasswordStatus>(`/accounts/${accountId}/mt5-config/password-status`),
   getOpenPositions: (accountId: string) =>
     request<OpenPositionsResponse>(`/accounts/${accountId}/open-positions`),
 
@@ -934,6 +936,11 @@ export interface BackfillSLTPResponse {
   sl_zero: number;
   no_order_found: number;
   r_computed: number;
+}
+
+export interface MT5PasswordStatus {
+  env_var_name: string;
+  present: boolean;
 }
 
 export interface PlanAdherenceGroup {
