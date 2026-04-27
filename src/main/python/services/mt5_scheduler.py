@@ -42,18 +42,25 @@ from src.main.python.services.database import get_session
 from src.main.python.services.mt5_connector import MT5ConnectionConfig
 from src.main.python.services.mt5_sync_service import MT5SyncService, load_mt5_password
 from src.main.python.services.telegram_notifier import get_notifier
+import src.main.python.services.runtime_state as _rs
 
 logger = logging.getLogger(__name__)
 
 # ── Module-level state ────────────────────────────────────────────────────────
 
-# Accounts currently mid-sync (overlap guard — in-process only, single-worker)
+# Accounts currently mid-sync (overlap guard — in-process only, single-worker).
+# Intentionally NOT persisted: after a restart any mid-sync is dead.
 _running: Set[str] = set()
 _running_lock = threading.Lock()
 
 # Per-account timestamp after which the next error alert is allowed.
 # Cleared on success so the next failure always triggers a fresh alert.
+# Persisted to runtime_state so cooldown survives backend restarts.
 _error_suppress_until: dict[str, datetime] = {}
+
+# Tracks which accounts have had their cooldown state loaded from DB.
+# Prevents repeated DB reads for the same account within one process lifetime.
+_cooldown_loaded: Set[str] = set()
 
 # Repeated failures for the same account are silenced after the first alert
 # until this many hours have elapsed (resets on success).
@@ -62,6 +69,8 @@ _ERROR_COOLDOWN_HOURS = 4
 # Maximum random start-delay (seconds) added when registering a new job,
 # so accounts registered at the same time don't all fire in lockstep.
 _JITTER_MAX_SECONDS = 30
+
+_KIND_COOLDOWN = "scheduler_error_cooldown"
 
 
 # ── Sync-lock helpers (shared by scheduled and manual syncs) ──────────────────
@@ -146,6 +155,7 @@ def _poll_account(account_id: str, lookback_days: int = 7) -> None:
         else:
             # Successful sync — clear error cooldown so the next failure sends a fresh alert
             _error_suppress_until.pop(account_id, None)
+            _clear_error_cooldown_db(account_id)
 
         logger.info(
             "Scheduled poll done account=%s status=%s new=%d updated=%d",
@@ -160,13 +170,51 @@ def _poll_account(account_id: str, lookback_days: int = 7) -> None:
         release_sync_lock(account_id)
 
 
+def _load_error_cooldown_db(account_id: str) -> None:
+    """
+    One-time load of persisted cooldown state from DB into _error_suppress_until.
+    Safe to call even if the DB is unavailable — logs and continues silently.
+    Marks account as loaded so we only hit the DB once per process lifetime.
+    """
+    _cooldown_loaded.add(account_id)
+    try:
+        with get_session() as session:
+            saved = _rs.get_state(session, account_id, _KIND_COOLDOWN)
+        if saved is not None:
+            suppress_until = datetime.fromisoformat(saved)
+            now = datetime.now(timezone.utc)
+            if suppress_until > now:
+                _error_suppress_until[account_id] = suppress_until
+                logger.debug(
+                    "Cooldown state restored from DB account=%s until=%s",
+                    account_id,
+                    suppress_until.strftime("%Y-%m-%d %H:%M UTC"),
+                )
+    except Exception as exc:
+        logger.debug("Could not load cooldown state for %s from DB: %s", account_id, exc)
+
+
+def _clear_error_cooldown_db(account_id: str) -> None:
+    """Delete persisted cooldown state from DB (called on successful sync)."""
+    try:
+        with get_session() as session:
+            _rs.delete_state(session, account_id, _KIND_COOLDOWN)
+    except Exception as exc:
+        logger.debug("Could not clear cooldown state for %s in DB: %s", account_id, exc)
+
+
 def _maybe_notify_error(account_id: str, result) -> None:
     """
     Send a Telegram failure alert unless one was already sent within the cooldown window.
 
     The cooldown prevents Telegram spam when MT5 is down for an extended period
     (e.g., broker maintenance) and the scheduler keeps firing at regular intervals.
+    Cooldown state is persisted to DB so it survives backend restarts.
     """
+    # Lazy-load persisted cooldown from DB on first call for this account
+    if account_id not in _cooldown_loaded:
+        _load_error_cooldown_db(account_id)
+
     now = datetime.now(timezone.utc)
     suppress_until = _error_suppress_until.get(account_id)
 
@@ -183,11 +231,20 @@ def _maybe_notify_error(account_id: str, result) -> None:
     except Exception:
         pass
 
-    _error_suppress_until[account_id] = now + timedelta(hours=_ERROR_COOLDOWN_HOURS)
+    new_suppress_until = now + timedelta(hours=_ERROR_COOLDOWN_HOURS)
+    _error_suppress_until[account_id] = new_suppress_until
+
+    # Persist so the cooldown survives a backend restart
+    try:
+        with get_session() as session:
+            _rs.set_state(session, account_id, _KIND_COOLDOWN, new_suppress_until.isoformat())
+    except Exception as exc:
+        logger.warning("Could not persist cooldown state for %s to DB: %s", account_id, exc)
+
     logger.info(
         "Scheduled poll error alert sent account=%s next_alert_after=%s",
         account_id,
-        _error_suppress_until[account_id].strftime("%Y-%m-%d %H:%M UTC"),
+        new_suppress_until.strftime("%Y-%m-%d %H:%M UTC"),
     )
 
 

@@ -6,12 +6,15 @@ from typing import Optional, Tuple
 import requests
 
 from src.main.python.services.ai_coach import ReviewResult
+from src.main.python.services.database import get_session
 from src.main.python.services.mt5_sync_service import SyncResult
 from src.main.python.utils.logging_utils import get_logger
+import src.main.python.services.runtime_state as _rs
 
 logger = get_logger(__name__)
 
 _TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
+_KIND_FTMO = "ftmo_last_status"
 
 
 class TelegramNotifier:
@@ -33,7 +36,8 @@ class TelegramNotifier:
         self._enabled = bool(
             self._bot_token and self._chat_id and enabled_flag != "false"
         )
-        self._last_ftmo_status: dict[str, str] = {}  # account_id → last notified status
+        self._last_ftmo_status: dict[str, str] = {}   # account_id → last notified status
+        self._ftmo_loaded: set = set()                 # accounts whose state was loaded from DB
 
         if not self._enabled:
             logger.info(
@@ -108,9 +112,24 @@ class TelegramNotifier:
         """
         Compare new FTMO status to the last-notified status for this account.
         Sends a Telegram alert only if the status has changed (or on the first call).
-        Updates the cache regardless of whether the send succeeded.
+        Updates the cache and DB regardless of whether the send succeeded.
         Returns (notification_sent, prev_status).
         """
+        # Lazy-load persisted status from DB on first call for this account.
+        # This ensures a restart does not re-fire alerts when status is unchanged.
+        if account_id not in self._ftmo_loaded:
+            self._ftmo_loaded.add(account_id)
+            try:
+                with get_session() as session:
+                    saved = _rs.get_state(session, account_id, _KIND_FTMO)
+                if saved is not None:
+                    self._last_ftmo_status[account_id] = saved
+                    logger.debug(
+                        "FTMO state restored from DB account=%s status=%s", account_id, saved
+                    )
+            except Exception as exc:
+                logger.debug("Could not load FTMO state for %s from DB: %s", account_id, exc)
+
         new_status = status_data.get("account_status", "UNKNOWN")
         prev_status = self._last_ftmo_status.get(account_id)
 
@@ -119,6 +138,14 @@ class TelegramNotifier:
 
         sent = self._notify_ftmo_status_change(account_name, status_data, prev_status)
         self._last_ftmo_status[account_id] = new_status
+
+        # Persist so the dedup state survives a backend restart
+        try:
+            with get_session() as session:
+                _rs.set_state(session, account_id, _KIND_FTMO, new_status)
+        except Exception as exc:
+            logger.warning("Could not persist FTMO state for %s to DB: %s", account_id, exc)
+
         return sent, prev_status
 
     def _notify_ftmo_status_change(

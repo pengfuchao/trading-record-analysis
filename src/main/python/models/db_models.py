@@ -406,6 +406,24 @@ class MT5OpenPositionModel(Base):
     )
 
 
+class RuntimeStateModel(Base):
+    """
+    Tiny key-value store for runtime state that must survive process restarts.
+
+    Used for:
+      - FTMO last-notified status (scope=account_id, kind="ftmo_last_status")
+      - Scheduler error alert cooldown (scope=account_id, kind="scheduler_error_cooldown")
+
+    Not for secrets, passwords, or large blobs.
+    """
+    __tablename__ = "runtime_state"
+
+    scope:      Mapped[str]      = mapped_column(String(100), primary_key=True)
+    kind:       Mapped[str]      = mapped_column(String(100), primary_key=True)
+    value_json: Mapped[str]      = mapped_column(Text,        nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+
+
 class MT5SyncRunModel(Base):
     """Audit log: one row per sync attempt (manual or scheduled)."""
     __tablename__ = "mt5_sync_runs"
