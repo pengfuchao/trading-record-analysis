@@ -1,9 +1,9 @@
 # Product Requirements Document
 ## Trading Record Analysis — MVP+ State and Future Roadmap
 
-**Document version:** 2.2  
-**Last updated:** 2026-04-26  
-**Status:** Active development — test coverage and ops now solid; analytics depth is the next frontier
+**Document version:** 2.3  
+**Last updated:** 2026-04-27  
+**Status:** Feature-complete for current scope; remaining work is operational hardening and data-durability improvements
 
 ---
 
@@ -426,6 +426,36 @@ Phase 11 (DONE 2026-04-26)
           verifies pages render and sidebar navigation works without a real backend
         - restore.ps1 + restore.sh (symmetric with backup scripts; confirmation prompt;
           restart hint on success)
+
+Phase 12 (DONE 2026-04-27)
+  └── SL/TP enrichment + ops hardening
+        SL/TP from MT5 orders (Phase 2 deferral resolved):
+          - MT5Connector.fetch_orders_sl_tp() — history_orders_get lookup keyed to
+            earliest order per position; non-fatal on failure
+          - reconstruct_positions updated to accept orders_sl_tp kwarg; fills SL/TP
+            from order, falls back to deal attribute
+          - MT5SyncService.sync_account wired up; synced trades now populate
+            stop_loss, take_profit, actual_r_multiple
+          - Trade Log SL/TP columns added; sort order fixed (exit_datetime DESC)
+        Historical SL/TP backfill endpoint (MT5-based):
+          - POST /accounts/{id}/mt5-sync/backfill-sl-tp — 2-year window by default
+          - Queries all trades with stop_loss IS NULL; matches by position_id
+          - Diagnostic counts: updated / sl_zero / no_order_found / r_computed
+          - Frontend: Backfill SL/TP panel on /mt5-sync page
+        CSV SL/TP enrichment flow (FTMO/MT5 CSV):
+          - POST /accounts/{id}/import/enrich-sl-tp — exact trade_id match
+          - NULL-only fill; idempotent; R recomputed on SL fill
+          - Frontend: Enrich SL/TP from CSV panel on /import page
+        Closed ops gaps (from 2026-04-26 doc):
+          - CORS_ORIGINS: ${CORS_ORIGINS:-...} in docker-compose (was hardcoded)
+          - Telegram route tests: 25 HTTP-layer tests added (commit 722bf1f)
+          - Empty-state onboarding: /trades, /plans, /daily, /coaching now show
+            helpful guidance when no data exists (commit 4ee56b2)
+        Ops hardening (this session):
+          - reset-data.sh / reset-data.ps1: safe wrapper for docker compose down -v
+            (auto-backup + "type reset to continue" prompt)
+          - README: ⚠️ warning on docker compose down -v; SL/TP workflow section
+          - _lifespan: WARN log if UVICORN_WORKERS != 1 (MT5 sync correctness)
 
 Later
   └── MT4 EA bridge

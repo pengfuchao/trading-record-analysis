@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { mutate } from "swr";
 import {
   api,
+  BackfillSLTPResponse,
   MT5Config,
   MT5ConfigCreate,
   MT5SyncResponse,
@@ -249,6 +250,30 @@ export default function MT5SyncPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<MT5SyncResponse | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+
+  // ── SL/TP backfill state ─────────────────────────────────────────────────────
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<BackfillSLTPResponse | null>(null);
+  const [backfillError, setBackfillError] = useState<string | null>(null);
+
+  const handleBackfill = async () => {
+    if (!accountId) return;
+    setBackfilling(true);
+    setBackfillResult(null);
+    setBackfillError(null);
+    try {
+      const result = await api.backfillSlTp(accountId);
+      setBackfillResult(result);
+      const pfx = (p: string) => (k: unknown) =>
+        typeof k === "string" && k.startsWith(p);
+      mutate(pfx(`trades-${accountId}`));
+      mutate(pfx(`analytics-${accountId}`));
+    } catch (e: any) {
+      setBackfillError(e.message ?? "Backfill failed");
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   const handleSync = async () => {
     if (!accountId) return;
@@ -722,7 +747,80 @@ export default function MT5SyncPage() {
         )}
       </div>
 
-      {/* ── Section 4: Open Positions ───────────────────────────────────────── */}
+      {/* ── Section 4: SL/TP Backfill ───────────────────────────────────────── */}
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-3">
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wider">SL / TP Backfill</p>
+          <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+            Fill missing stop_loss and take_profit for historical trades already in the log by
+            querying MT5 order history (2-year window). Use this when you have no CSV export.
+            Existing values are never overwritten. May take several minutes — do not click twice.
+          </p>
+        </div>
+
+        {backfillError && (
+          <p className="text-xs text-red-400">{backfillError}</p>
+        )}
+
+        {!backfillResult ? (
+          <button
+            onClick={handleBackfill}
+            disabled={backfilling || (status != null && !status.sync_configured)}
+            className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-200 text-sm px-4 py-2 rounded-md transition-colors font-medium"
+          >
+            {backfilling ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                Backfilling…
+              </span>
+            ) : (
+              "Backfill SL / TP from MT5"
+            )}
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+              <div className="text-center">
+                <p className="text-xl font-semibold text-green-400">{backfillResult.updated}</p>
+                <p className="text-xs text-gray-500 mt-0.5">SL filled</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-semibold text-blue-400">{backfillResult.r_computed}</p>
+                <p className="text-xs text-gray-500 mt-0.5">R computed</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-semibold text-gray-400">{backfillResult.sl_zero}</p>
+                <p className="text-xs text-gray-500 mt-0.5">SL=0 on order</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-semibold text-gray-400">{backfillResult.no_order_found}</p>
+                <p className="text-xs text-gray-500 mt-0.5">No order</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-semibold text-gray-400">{backfillResult.trades_checked}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Checked</p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500">
+              {backfillResult.orders_fetched} orders fetched from MT5
+            </p>
+            <button
+              onClick={() => { setBackfillResult(null); setBackfillError(null); }}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Run again
+            </button>
+          </div>
+        )}
+
+        {status != null && !status.sync_configured && (
+          <p className="text-xs text-yellow-500">
+            Save an MT5 config above before running the backfill.
+          </p>
+        )}
+      </div>
+
+      {/* ── Section 5: Open Positions ───────────────────────────────────────── */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
           <p className="text-xs text-gray-500 uppercase tracking-wider">Open Positions</p>

@@ -250,6 +250,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  backfillSlTp: (accountId: string) =>
+    request<BackfillSLTPResponse>(`/accounts/${accountId}/mt5-sync/backfill-sl-tp`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   getOpenPositions: (accountId: string) =>
     request<OpenPositionsResponse>(`/accounts/${accountId}/open-positions`),
 
@@ -917,6 +922,18 @@ export interface MT5SyncStatus {
   next_poll_at?: string;
   last_sync_at?: string;
   last_runs: MT5SyncRunSummary[];
+}
+
+export interface BackfillSLTPResponse {
+  account_id: string;
+  from_date: string;
+  to_date: string;
+  orders_fetched: number;
+  trades_checked: number;
+  updated: number;
+  sl_zero: number;
+  no_order_found: number;
+  r_computed: number;
 }
 
 export interface PlanAdherenceGroup {

@@ -38,6 +38,19 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("  CORS     : %s", cors_origins)
     logger.info("  log level: %s", os.environ.get("LOG_LEVEL", "INFO"))
 
+    # MT5 sync uses an in-memory overlap lock — unsafe with multiple workers.
+    workers_env = os.environ.get("UVICORN_WORKERS", "1").strip()
+    try:
+        if int(workers_env) != 1:
+            logger.warning(
+                "UVICORN_WORKERS=%s — MT5 sync overlap protection is in-memory only. "
+                "Running multiple workers will silently corrupt MT5 sync state. "
+                "Set UVICORN_WORKERS=1 (or omit it).",
+                workers_env,
+            )
+    except ValueError:
+        pass
+
     scheduler = get_scheduler()
     scheduler.start()
     logger.info("MT5 background scheduler started")

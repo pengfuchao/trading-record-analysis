@@ -48,6 +48,9 @@ A full-stack web app that gives you a structured way to:
 | Telegram structured write-in (`/plan`, `/journal`, `/status`, `/ping`) | Done |
 | Trade CSV export — `GET /accounts/{id}/trades/export/csv` with active filters | Done |
 | Backup + restore scripts (`backup.ps1`/`sh`, `restore.ps1`/`sh`) | Done |
+| MT5 SL/TP from order history — `stop_loss`/`take_profit` populated from `history_orders_get` | Done |
+| Historical SL/TP backfill — `POST .../mt5-sync/backfill-sl-tp` + UI on MT5 Sync page | Done |
+| CSV SL/TP enrichment — `POST .../import/enrich-sl-tp` + UI on Import page | Done |
 
 ## Tech Stack
 
@@ -144,10 +147,18 @@ Migrations run automatically on backend startup before the server accepts traffi
 | `frontend` | built from `frontend/Dockerfile` | 3000 |
 
 Database data persists in a named Docker volume `pgdata`. To reset the database:
-```bash
-docker compose down -v   # WARNING: destroys all data
-docker compose up --build
-```
+
+> **⚠️ WARNING:** `docker compose down -v` permanently destroys all journal data with no undo.
+> Use the safe wrapper instead — it auto-runs a backup first and requires explicit confirmation:
+> ```bash
+> bash reset-data.sh    # WSL/Linux — backs up, prompts "type reset to continue", then down -v
+> .\reset-data.ps1      # Windows PowerShell equivalent
+> ```
+> Only run the raw command if you are certain there is no data worth keeping:
+> ```bash
+> docker compose down -v   # DESTRUCTIVE — no backup, no prompt
+> docker compose up --build
+> ```
 
 ### Backup and restore
 
@@ -229,7 +240,12 @@ Invoke-WebRequest http://localhost:8000/ready | Select-Object -ExpandProperty Co
 
 2. **Import trades** — go to Import, drop your MT4/MT5 CSV export, preview, confirm; optionally run Recompute R & Session afterward
 
-3. **Enrich trades** — open any trade from the Trade Log, click Edit Journal, fill in setup type (dropdown from your Setup Library), mistake flags, execution quality, and reflection notes
+3. **If SL/TP shows blank in Trade Log** — two paths:
+   - *Have an FTMO / MT5 CSV export?* → Import page → **Enrich SL/TP from CSV** — no MT5 terminal needed, works offline, exact `trade_id` match
+   - *No CSV, but MT5 terminal running (Windows)?* → MT5 Sync page → **Backfill SL/TP from MT5** — queries 2-year order history; may take several minutes; do not click twice
+   Both paths are NULL-only fills — running one after the other is safe and idempotent.
+
+4. **Enrich trades** — open any trade from the Trade Log, click Edit Journal, fill in setup type (dropdown from your Setup Library), mistake flags, execution quality, and reflection notes
 
 4. **Create trade plans** — go to Plans, create a pre-trade plan with thesis and R:R, then link it to the actual trade after execution
 

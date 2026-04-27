@@ -434,6 +434,8 @@ export default function ImportPage() {
               Upload an FTMO / MT5 / MT4 exported statement to fill missing stop_loss and
               take_profit for trades already in the log. R is recomputed automatically.
               Existing values are never overwritten. No duplicate trades are created.
+              Use this path if you have a CSV export — for historical trades without a CSV,
+              use the MT5 Backfill on the MT5 Sync page.
             </p>
           </div>
 
