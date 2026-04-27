@@ -98,8 +98,8 @@ All stateless; caller owns the session via `get_session()`.
 | R3 — reset-data guardrail | Done | reset-data.sh + reset-data.ps1 |
 | R4 — single-worker enforcement | Done | _lifespan WARN log |
 | R5 — Persist FTMO/scheduler cooldown | **Done** | runtime_state table, migration 011 |
-| R6 — MT5 password env var presence indicator | Open | GET .../mt5-config/password-status + UI green✓/red✗ |
+| R6 — MT5 password env var presence indicator | **Done** | GET .../mt5-config/password-status + UI ✓/✗ badge; commit ec656cc |
 | R7 — SL/TP backfill UX | Partially done | UI panel added; async only if user feels pain |
 | R8 — Real-data Playwright E2E | Deferred | No regression has slipped through mocked tests yet |
 
-**Next session:** R6 — MT5 password env var presence indicator (small endpoint + UI; high first-setup value).
+**Next session:** R7 or R8, or new items raised by the operator.
