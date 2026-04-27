@@ -1,8 +1,8 @@
 # Product Requirements Document
 ## Trading Record Analysis — MVP+ State and Future Roadmap
 
-**Document version:** 2.3  
-**Last updated:** 2026-04-27  
+**Document version:** 2.4  
+**Last updated:** 2026-04-28  
 **Status:** Feature-complete for current scope; remaining work is operational hardening and data-durability improvements
 
 ---
@@ -456,6 +456,30 @@ Phase 12 (DONE 2026-04-27)
             (auto-backup + "type reset to continue" prompt)
           - README: ⚠️ warning on docker compose down -v; SL/TP workflow section
           - _lifespan: WARN log if UVICORN_WORKERS != 1 (MT5 sync correctness)
+
+Phase 13 (DONE 2026-04-28)
+  └── Reliability hardening: runtime_state persistence, password indicator, SL/TP integrity
+        R5 — Persist FTMO + scheduler cooldown state across restarts:
+          - migration 011: runtime_state(scope, kind, value_json, updated_at) table
+          - services/runtime_state.py: get_state / set_state / delete_state helpers
+          - mt5_scheduler.py: lazy-load + persist _error_suppress_until (cooldown);
+            clear on sync success; log WARN on DB failure (non-fatal)
+          - telegram_notifier.py: lazy-load + persist _last_ftmo_status (FTMO dedup);
+            persist on status change; non-fatal on DB failure
+          - 20 integration tests (service CRUD + simulated restart scenarios)
+        R6 — MT5 password env var presence indicator:
+          - GET /accounts/{id}/mt5-config/password-status → {env_var_name, present}
+          - password value never returned; only boolean presence check
+          - frontend /mt5-sync: green ✓ Present / red ✗ Not found badge in password
+            note block; refreshes after config save
+          - 8 route tests covering missing/present/empty var, 404, convention variants
+        SL/TP null-overwrite data integrity fix:
+          - bug: save_batch_import(update_broker) applied _BROKER_FIELDS blindly;
+            _BROKER_FIELDS includes stop_loss, take_profit, actual_r_multiple;
+            MT5 sync windows miss older orders → incoming sl/tp=None → DB values wiped
+          - fix: _SL_TP_PROTECTED_FIELDS guard in update_broker loop — incoming None
+            does not overwrite existing non-null; incoming non-null still updates
+          - 7 regression tests including full enrich → sync → verify sequence
 
 Later
   └── MT4 EA bridge

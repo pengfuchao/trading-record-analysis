@@ -27,7 +27,7 @@ Before starting ANY task, respond with:
 
 ## Project Status (as of 2026-04-26)
 
-### Maturity: 9 / 10 — Feature-complete, test coverage solid, ops hardened
+### Maturity: 9.5 / 10 — Feature-complete, data integrity hardened, ops solid
 
 ### Completed Phases
 - **Phase 1** — Core backend (accounts, trades, CSV import, analytics, PostgreSQL)
@@ -41,6 +41,16 @@ Before starting ANY task, respond with:
 - **Phase 9** — MT5 scheduler resilience (alert cooldown 4h, polling jitter 0–30s, `lookback_days` configurable, single-worker startup advisory)
 - **Phase 10** — MT5 `lookback_days` UI + `GET /accounts/{id}/trades/export/csv` + `backup.ps1`/`backup.sh`
 - **Phase 11** — CI hardening: Postgres 15 CI job (migration + ORM smoke tests), Playwright E2E (8 tests, mocked API), `restore.ps1`/`restore.sh`
+- **Phase 12** — SL/TP enrichment, backfill, CSV enrich flow; reset-data guardrail; single-worker enforcement
+- **Phase 13** — Runtime state persistence (R5: FTMO dedup + scheduler cooldown), MT5 password presence badge (R6), SL/TP null-overwrite data integrity fix
+
+### Critical Data Integrity Invariant (Phase 13)
+`save_batch_import(duplicate_strategy="update_broker")` in `trade_repository.py` must never use
+an incoming `None` value to overwrite a non-null `stop_loss`, `take_profit`, or `actual_r_multiple`.
+These fields are protected by `_SL_TP_PROTECTED_FIELDS`. This prevents MT5 sync from wiping
+enriched/backfilled SL/TP when the sync's order window doesn't cover a historical trade's order.
+**Do not remove this guard. Do not add SL/TP-adjacent fields to `_BROKER_FIELDS` without
+also adding them to `_SL_TP_PROTECTED_FIELDS` if they can be enriched independently.**
 
 ### Strongest Modules
 1. `core/account_analytics.py` + `core/metrics_calculator.py` — 15+ metric families, no stubs
@@ -50,12 +60,13 @@ Before starting ANY task, respond with:
 
 ### Current Weak / Rough Areas
 - Frontend E2E tests use mocked API only — no real-data end-to-end coverage
-- No automated backup schedule — `backup.ps1`/`backup.sh` exist but must be run manually
+- Backup scripts exist and are scheduled; off-host copy is operator discipline
 
-### Next Direction (no phase assigned yet)
-No specific high-priority gap remains. Possible candidates:
-- Extend Playwright E2E tests with real-data backend integration coverage
-- Add automated backup scheduling documentation (cron / Task Scheduler)
+### Next Direction
+Low urgency. Possible candidates:
+- R7: SL/TP backfill async UX (only if operator finds long wait painful)
+- R8: Real-data Playwright E2E (no regression has slipped through mocked tests yet)
+- Manual validation of R5/R6/SL-TP fix before any code work
 
 ---
 
