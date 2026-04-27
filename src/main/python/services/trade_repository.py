@@ -65,6 +65,14 @@ _BROKER_FIELDS = (
     "result", "magic", "comment", "import_run_id",
 )
 
+# SL/TP-related fields that must never be null-overwritten by a normal broker sync.
+# MT5 sync fetches orders only within a short rolling window; older trades will have
+# sl=None in the incoming position dict even though SL was set at trade entry.
+# Overwriting existing enriched values with None would silently erase backfilled data.
+# Guard: skip the setattr only when incoming IS None AND existing IS NOT None.
+# If MT5 sends a genuine non-null SL/TP, it is still written (incoming is not None).
+_SL_TP_PROTECTED_FIELDS = frozenset(("stop_loss", "take_profit", "actual_r_multiple"))
+
 
 @dataclass
 class ImportCounts:
@@ -153,7 +161,17 @@ class TradeRepository:
                 if orm_obj is not None:
                     new_orm = trade_to_orm(trade, import_run_id=import_run_id)
                     for field in _BROKER_FIELDS:
-                        setattr(orm_obj, field, getattr(new_orm, field, None))
+                        incoming = getattr(new_orm, field, None)
+                        # Never null-overwrite a previously enriched SL/TP/R field.
+                        # MT5 sync windows miss older orders → sl/tp=None in position
+                        # dicts for historical trades, which would silently erase backfilled data.
+                        if (
+                            field in _SL_TP_PROTECTED_FIELDS
+                            and incoming is None
+                            and getattr(orm_obj, field) is not None
+                        ):
+                            continue
+                        setattr(orm_obj, field, incoming)
                 counts.updated += 1
             else:
                 # Unknown strategy — treat as skip

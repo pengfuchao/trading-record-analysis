@@ -516,3 +516,164 @@ class TestEnrichSLTP:
         assert counts["sl_filled"] == 1      # T001 got SL
         assert counts["already_had_sl"] == 1  # T002 already had SL
         assert counts["not_in_db"] == 1      # GHOST not in DB
+
+
+# ── save_batch_import update_broker SL/TP protection (regression: R6 bug fix) ──
+
+class TestSaveBatchImportUpdateBroker:
+    """
+    Regression tests for the MT5 sync null-overwrite bug.
+
+    Scenario: A trade is synced from MT5, then SL/TP are enriched (via CSV or backfill).
+    A subsequent MT5 sync may not include SL/TP for that trade (orders outside the
+    rolling window). Without protection, the update_broker path overwrites the enriched
+    SL/TP with None. These tests verify the fix.
+    """
+
+    def _seed(self, trade_repo, account_repo, session, **trade_kwargs) -> Trade:
+        """Seed one account + one trade, commit, return the trade."""
+        account_repo.save(make_account())
+        session.commit()
+        trade = make_trade(**trade_kwargs)
+        trade_repo.save(trade)
+        session.commit()
+        return trade
+
+    def _sync_update(self, trade_repo, session, trade_id: str, **override_fields) -> None:
+        """Simulate a broker sync update_broker call with the given field overrides."""
+        incoming = make_trade(
+            trade_id=trade_id,
+            account_id="ACC001",
+            **override_fields,
+        )
+        trade_repo.save_batch_import(
+            [incoming],
+            import_run_id="sync-run-1",
+            duplicate_strategy="update_broker",
+        )
+        session.commit()
+
+    def test_existing_sl_not_overwritten_by_null(self, trade_repo, account_repo, session):
+        """MT5 sync with sl=None must not erase an existing enriched stop_loss."""
+        self._seed(trade_repo, account_repo, session,
+                   stop_loss=1.0800, take_profit=1.0950, actual_r_multiple=1.4)
+
+        # Simulate sync that returns no SL/TP (orders outside window)
+        self._sync_update(trade_repo, session, "T001",
+                          stop_loss=None, take_profit=None, actual_r_multiple=None)
+
+        found = trade_repo.get_by_id("T001")
+        assert found.stop_loss == pytest.approx(1.0800)
+        assert found.take_profit == pytest.approx(1.0950)
+
+    def test_existing_tp_not_overwritten_by_null(self, trade_repo, account_repo, session):
+        self._seed(trade_repo, account_repo, session,
+                   stop_loss=1.0800, take_profit=1.0950, actual_r_multiple=None)
+        self._sync_update(trade_repo, session, "T001",
+                          stop_loss=None, take_profit=None)
+        found = trade_repo.get_by_id("T001")
+        assert found.take_profit == pytest.approx(1.0950)
+
+    def test_existing_r_not_cleared_when_sync_sl_null(self, trade_repo, account_repo, session):
+        """actual_r_multiple must not be nulled out just because the sync has no SL."""
+        self._seed(trade_repo, account_repo, session,
+                   stop_loss=1.0800, take_profit=1.0950, actual_r_multiple=1.4)
+        self._sync_update(trade_repo, session, "T001",
+                          stop_loss=None, take_profit=None, actual_r_multiple=None)
+        found = trade_repo.get_by_id("T001")
+        assert found.actual_r_multiple == pytest.approx(1.4)
+
+    def test_sl_tp_filled_when_existing_is_null(self, trade_repo, account_repo, session):
+        """When existing SL/TP is null, an incoming non-null value is written."""
+        self._seed(trade_repo, account_repo, session,
+                   stop_loss=None, take_profit=None, actual_r_multiple=None)
+        self._sync_update(trade_repo, session, "T001",
+                          stop_loss=1.0800, take_profit=1.0950, actual_r_multiple=1.4)
+        found = trade_repo.get_by_id("T001")
+        assert found.stop_loss == pytest.approx(1.0800)
+        assert found.take_profit == pytest.approx(1.0950)
+        assert found.actual_r_multiple == pytest.approx(1.4)
+
+    def test_sl_tp_updated_when_sync_brings_real_values(self, trade_repo, account_repo, session):
+        """If MT5 sends a genuine non-null SL/TP, it overwrites the existing value."""
+        self._seed(trade_repo, account_repo, session,
+                   stop_loss=1.0800, take_profit=1.0950, actual_r_multiple=1.4)
+        # Sync returns a different (real) SL — should update
+        self._sync_update(trade_repo, session, "T001",
+                          stop_loss=1.0780, take_profit=1.0970, actual_r_multiple=2.0)
+        found = trade_repo.get_by_id("T001")
+        assert found.stop_loss == pytest.approx(1.0780)
+        assert found.take_profit == pytest.approx(1.0970)
+        assert found.actual_r_multiple == pytest.approx(2.0)
+
+    def test_other_broker_fields_still_updated(self, trade_repo, account_repo, session):
+        """SL/TP protection does not prevent other broker fields from being updated."""
+        self._seed(trade_repo, account_repo, session,
+                   gross_pnl=50.0, net_pnl=43.0, symbol="EURUSD",
+                   stop_loss=1.0800, take_profit=1.0950)
+        # Sync updates PnL and symbol but has no SL/TP
+        incoming = make_trade(
+            trade_id="T001", account_id="ACC001",
+            gross_pnl=75.0, net_pnl=68.0, symbol="GBPUSD",
+            stop_loss=None, take_profit=None,
+        )
+        trade_repo.save_batch_import([incoming], import_run_id="sync-2",
+                                     duplicate_strategy="update_broker")
+        session.commit()
+        found = trade_repo.get_by_id("T001")
+        assert found.gross_pnl == pytest.approx(75.0)
+        assert found.net_pnl == pytest.approx(68.0)
+        assert found.symbol == "GBPUSD"
+        # SL/TP still intact
+        assert found.stop_loss == pytest.approx(1.0800)
+        assert found.take_profit == pytest.approx(1.0950)
+
+    def test_enrich_then_sync_sequence(self, trade_repo, account_repo, session):
+        """
+        Full regression test for the observed user scenario:
+          1. Trade synced from MT5 with no SL/TP
+          2. SL/TP enriched from CSV
+          3. Second MT5 sync for same trade has no SL/TP (orders outside window)
+          Expected: enriched SL/TP survives step 3
+        """
+        account_repo.save(make_account())
+        session.commit()
+
+        # Step 1: initial sync — no SL/TP in deal data
+        first_sync = make_trade(
+            trade_id="T001", account_id="ACC001",
+            entry_price=1.0850, exit_price=1.0920,
+            stop_loss=None, take_profit=None, actual_r_multiple=None,
+        )
+        trade_repo.save_batch_import([first_sync], import_run_id="sync-1",
+                                     duplicate_strategy="update_broker")
+        session.commit()
+        assert trade_repo.get_by_id("T001").stop_loss is None
+
+        # Step 2: SL/TP enriched from CSV backfill
+        trade_repo.enrich_sl_tp("ACC001", [
+            Trade(trade_id="T001", account_id="ACC001",
+                  stop_loss=1.0800, take_profit=1.0950)
+        ])
+        session.commit()
+        after_enrich = trade_repo.get_by_id("T001")
+        assert after_enrich.stop_loss == pytest.approx(1.0800)
+        assert after_enrich.take_profit == pytest.approx(1.0950)
+
+        # Step 3: subsequent sync — same trade, orders outside window → SL/TP=None
+        second_sync = make_trade(
+            trade_id="T001", account_id="ACC001",
+            entry_price=1.0850, exit_price=1.0920,
+            stop_loss=None, take_profit=None, actual_r_multiple=None,
+        )
+        trade_repo.save_batch_import([second_sync], import_run_id="sync-2",
+                                     duplicate_strategy="update_broker")
+        session.commit()
+
+        after_second_sync = trade_repo.get_by_id("T001")
+        assert after_second_sync.stop_loss == pytest.approx(1.0800), (
+            "Enriched stop_loss was wiped by a subsequent sync with sl=None"
+        )
+        assert after_second_sync.take_profit == pytest.approx(1.0950), (
+            "Enriched take_profit was wiped by a subsequent sync with tp=None"
+        )
