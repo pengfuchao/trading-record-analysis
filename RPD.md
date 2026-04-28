@@ -19,7 +19,7 @@ A professional trading journal and account analytics platform for discretionary 
 
 ---
 
-## 2. Current MVP+ State (as of 2026-04-16)
+## 2. Current MVP+ State (as of 2026-04-28)
 
 ### 2.1 What Is Built and Working
 
@@ -512,4 +512,4 @@ Later
 | MT4 live sync path is fragile | EA-based bridges are platform-version-sensitive and hard to maintain. |
 | Telegram bot Phase B requires NLP robustness | Poorly structured commands can create bad journal data silently. |
 | plan_adherence analytics require consistent plan linking | If traders don't link plans to trades, the signal is weak. |
-| CORS_ORIGINS hardcoded in docker-compose | Cannot override via `.env` for remote deploys without compose restructuring. |
+| CORS_ORIGINS configurable | `${CORS_ORIGINS:-http://localhost:3000}` in `docker-compose.yml` — override in `.env` for remote deploys. |

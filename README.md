@@ -358,7 +358,7 @@ The webhook rejects messages from any chat_id that doesn't match `TELEGRAM_CHAT_
 | MT5 sync is single-process | Overlap protection is in-memory only. Multi-process (Gunicorn multi-worker) deployments would lose this protection. Use `--workers 1`. |
 | Screenshot upload not implemented | `screenshot_examples` field exists in the schema but no image storage is wired up. |
 | Telegram NLP deferred | `/journal` requires exact trade UUID. No broker ticket lookup, no multi-step flows. |
-| FTMO alert dedup is in-memory | Server restart clears dedup state; first check after restart will re-fire the current status alert. |
+| FTMO alert dedup persists across restarts | State stored in `runtime_state` table (migration 011); restarts no longer re-fire stale alerts. |
 | Setup Library not auto-populated | New setup names from imports don't create Library entries automatically. |
 | Coaching covers closed trades only | No open position awareness in coaching context. |
 

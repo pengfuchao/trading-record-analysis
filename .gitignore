@@ -68,3 +68,9 @@ npm-debug.log*
 # Screenshots / uploads (large files)
 uploads/
 screenshots/
+
+# Database backups (real journal data — must not be committed)
+backups/
+
+# Playwright test artifacts
+frontend/test-results/

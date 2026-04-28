@@ -239,3 +239,39 @@ The backfill endpoint can take several minutes for large trade histories. The UI
 Playwright tests are mocked only. Real-data coverage would catch API contract drift. No regression has slipped through yet; defer until mocked tests fail to catch something real.
 
 **D. Any new issues** observed during manual validation above — fix those first.
+
+---
+
+## Manual Validations — Completed and Passed (2026-04-28)
+
+All 6 manual validations from the recommended list above were executed by the operator and passed:
+
+1. `alembic upgrade head` was run; migration 011 applied; `runtime_state` table verified in live DB.
+2. MT5 sync triggered after SL/TP enrichment; enriched `stop_loss`, `take_profit`, and `actual_r_multiple` survived intact — null-overwrite fix confirmed in production.
+3. Backend restarted; no duplicate FTMO Telegram alert fired (R5 FTMO dedup persisted across restart).
+4. Scheduler error cooldown survived restart; duplicate error alert was suppressed (R5 cooldown persisted across restart).
+5. `/mt5-sync` page password env var presence badge confirmed working (R6).
+6. Full CSV-enrich → MT5 sync → SL/TP persistence flow verified end-to-end.
+
+**Reliability roadmap (R1–R6 + SL/TP null-overwrite fix) is now closed and verified in live use.**
+
+No urgent code work remains. Project maturity: 9.5 / 10.
+
+## Roadmap After Validation Pass
+
+| Item | Status |
+|---|---|
+| R7 — SL/TP backfill async UX | Deferred — only if operator finds the blocking wait painful |
+| R8 — Real-data Playwright E2E | Deferred — only after a regression slips through mocked tests |
+| All other items | Long-term / optional |
+
+## Pending Operator Action
+
+5 commits (`14dfaf6`, `ec656cc`, `9f5d17e`, `59bdaad`, `cddb204`) remain unpushed; GitHub remote token is expired. Operator should refresh the PAT and run `git push origin main`.
+
+## Audit Pass Docs Updated (2026-04-28 session)
+
+- `README.md` — fixed stale FTMO dedup "Known Limitations" row (R5 made dedup persistent)
+- `CLAUDE.md` — bumped status header to 2026-04-28; updated "Next Direction" to record validations passed
+- `RPD.md` — bumped Section 2 date to 2026-04-28; fixed CORS_ORIGINS Section 7 row (no longer hardcoded)
+- `.gitignore` — added `backups/` and `frontend/test-results/` (were untracked, data-leak risk)

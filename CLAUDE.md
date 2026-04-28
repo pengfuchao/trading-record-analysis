@@ -25,7 +25,7 @@ Before starting ANY task, respond with:
 
 ---
 
-## Project Status (as of 2026-04-26)
+## Project Status (as of 2026-04-28)
 
 ### Maturity: 9.5 / 10 — Feature-complete, data integrity hardened, ops solid
 
@@ -63,10 +63,11 @@ also adding them to `_SL_TP_PROTECTED_FIELDS` if they can be enriched independen
 - Backup scripts exist and are scheduled; off-host copy is operator discipline
 
 ### Next Direction
-Low urgency. Possible candidates:
+Low urgency. All 6 manual validations (migration 011, SL/TP sync test, FTMO dedup restart, cooldown restart, password badge, CSV-enrich→sync→persist) were completed and passed by the operator on 2026-04-28. No urgent code work remains.
+
+Possible future candidates:
 - R7: SL/TP backfill async UX (only if operator finds long wait painful)
-- R8: Real-data Playwright E2E (no regression has slipped through mocked tests yet)
-- Manual validation of R5/R6/SL-TP fix before any code work
+- R8: Real-data Playwright E2E (only after a regression slips through mocked tests)
 
 ---
 
