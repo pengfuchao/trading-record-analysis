@@ -795,14 +795,17 @@ export default function MT5SyncPage() {
         <div>
           <p className="text-xs text-gray-500 uppercase tracking-wider">SL / TP Backfill</p>
           <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-            Fill missing stop_loss and take_profit for historical trades already in the log by
-            querying MT5 order history (2-year window). Use this when you have no CSV export.
-            Existing values are never overwritten. May take several minutes — do not click twice.
+            Queries the MT5 order history (2-year window) to fill missing stop_loss and
+            take_profit for all trades in this account. Use this when you have no CSV export.
+            Existing values are never overwritten. For large accounts this can take 1–3 minutes —
+            the button is disabled while the backfill is running.
           </p>
         </div>
 
         {backfillError && (
-          <p className="text-xs text-red-400">{backfillError}</p>
+          <div className="bg-red-900/30 border border-red-700 text-red-300 text-sm px-4 py-3 rounded-md">
+            {backfillError}
+          </div>
         )}
 
         {!backfillResult ? (
@@ -814,18 +817,19 @@ export default function MT5SyncPage() {
             {backfilling ? (
               <span className="flex items-center gap-2">
                 <span className="w-3 h-3 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
-                Backfilling…
+                Backfilling — please wait…
               </span>
             ) : (
               "Backfill SL / TP from MT5"
             )}
           </button>
         ) : (
-          <div className="space-y-3">
+          <div className="bg-green-900/20 border border-green-700 rounded-lg p-4 space-y-3">
+            <p className="text-green-300 text-sm font-medium">Backfill complete</p>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
               <div className="text-center">
                 <p className="text-xl font-semibold text-green-400">{backfillResult.updated}</p>
-                <p className="text-xs text-gray-500 mt-0.5">SL filled</p>
+                <p className="text-xs text-gray-500 mt-0.5">SL / TP filled</p>
               </div>
               <div className="text-center">
                 <p className="text-xl font-semibold text-blue-400">{backfillResult.r_computed}</p>
@@ -837,7 +841,7 @@ export default function MT5SyncPage() {
               </div>
               <div className="text-center">
                 <p className="text-xl font-semibold text-gray-400">{backfillResult.no_order_found}</p>
-                <p className="text-xs text-gray-500 mt-0.5">No order</p>
+                <p className="text-xs text-gray-500 mt-0.5">No order found</p>
               </div>
               <div className="text-center">
                 <p className="text-xl font-semibold text-gray-400">{backfillResult.trades_checked}</p>

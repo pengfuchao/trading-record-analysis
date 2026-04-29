@@ -186,10 +186,10 @@ export default function TradesPage() {
                     {fmtPnl(t.net_pnl)}
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-gray-400">
-                    {t.stop_loss != null ? fmt(t.stop_loss, 4) : <span className="text-gray-700">—</span>}
+                    {t.stop_loss != null ? fmt(t.stop_loss, 4) : <span className="text-gray-500" title="SL not recorded">—</span>}
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-gray-400">
-                    {t.take_profit != null ? fmt(t.take_profit, 4) : <span className="text-gray-700">—</span>}
+                    {t.take_profit != null ? fmt(t.take_profit, 4) : <span className="text-gray-500" title="TP not recorded">—</span>}
                   </td>
                   <td className={`px-4 py-3 text-right font-mono ${pnlColor(t.actual_r_multiple)}`}>
                     {fmt(t.actual_r_multiple)}
