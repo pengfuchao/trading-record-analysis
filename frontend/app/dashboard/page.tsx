@@ -1631,14 +1631,14 @@ export default function DashboardPage() {
 
       {exitData && exitData.total_classified > 0 && (
         <section className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <h2 className="text-sm font-semibold text-gray-300 mb-3">Exit Outcome Decomposition</h2>
+          <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Exit Outcome Decomposition</h2>
           <ExitDecompositionPanel data={exitData} />
         </section>
       )}
 
       {entryExitData && entryExitData.classified_trades >= 5 && (
         <section className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <h2 className="text-sm font-semibold text-gray-300 mb-1">Entry vs Exit Quality</h2>
+          <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-3">Entry vs Exit Quality</h2>
           <p className="text-xs text-gray-600 mb-3">
             Conservative diagnostic — exit signals are directly observable; entry signals require journal flags.
           </p>
