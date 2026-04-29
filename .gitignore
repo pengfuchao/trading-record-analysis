@@ -74,3 +74,8 @@ backups/
 
 # Playwright test artifacts
 frontend/test-results/
+
+# Claude Code / AI-tool local artifacts (per-developer state, never tracked)
+.claude/
+.cursor/
+.aider*

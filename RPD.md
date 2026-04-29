@@ -1,9 +1,9 @@
 # Product Requirements Document
 ## Trading Record Analysis — MVP+ State and Future Roadmap
 
-**Document version:** 2.4  
-**Last updated:** 2026-04-28  
-**Status:** Feature-complete for current scope; remaining work is operational hardening and data-durability improvements
+**Document version:** 2.5  
+**Last updated:** 2026-04-30  
+**Status:** Feature-complete + R7 polish + R9 UI polish in progress; project in long-term testing / observation mode. Public-release safety audit passed.
 
 ---
 
@@ -19,7 +19,7 @@ A professional trading journal and account analytics platform for discretionary 
 
 ---
 
-## 2. Current MVP+ State (as of 2026-04-28)
+## 2. Current MVP+ State (as of 2026-04-30)
 
 ### 2.1 What Is Built and Working
 
@@ -481,7 +481,39 @@ Phase 13 (DONE 2026-04-28)
             does not overwrite existing non-null; incoming non-null still updates
           - 7 regression tests including full enrich → sync → verify sequence
 
-Later
+Phase 14 (DONE 2026-04-30)
+  └── R7 SL/TP backfill UX polish + R9 UI polish slices + public-release prep
+        R7 — SL/TP backfill UX (small-version completion, no async job system):
+          - error display upgraded from bare red text to full red banner box
+          - helper text rewritten — explains 2-year order history scan; drops
+            "do not click twice" since the button is properly disabled
+          - success result wrapped in green-bordered card with "Backfill complete"
+            header for clear outcome framing
+          - in-progress label clarified to "Backfilling — please wait…"
+          - full async job system intentionally deferred — only revisit if real-use
+            wait becomes painful
+        R9 — UI polish slices:
+          - MT5 Sync page section reorder + status pill in header
+            (Data Freshness → Manual Sync → Configuration; daily-action surface)
+          - Trade Log SL/TP missing-value placeholder color visibility
+            (text-gray-700 → text-gray-500 + title tooltips)
+          - Dashboard section heading consistency (2 outliers brought in line
+            with the dominant text-xs uppercase tracking-wider text-gray-500)
+          - Import page Enrich SL/TP heading consistency
+          - Trade Log column header "Dir" → "Side" (standard trading terminology)
+        Public-release prep:
+          - safety audit on all 185 tracked files — no secrets, no real credentials,
+            no DB dumps or backups in tracked content
+          - .gitignore hardened: added .claude/, .cursor/, .aider* so future
+            contributors don't depend on the operator's global gitignore
+          - project-state-2026-04-30-public-release-prep.md handoff written —
+            consolidated roadmap, monitoring checklist, public-release verdict
+
+Later (long-term, deferred unless explicit roadmap selection)
+  └── MAE/MFE analytics
+  └── Open-trade-aware AI coaching
+  └── Async backfill job with progress endpoint
+  └── Real-data Playwright E2E (R8)
   └── MT4 EA bridge
   └── AI provider abstraction
   └── Chart screenshot attachments

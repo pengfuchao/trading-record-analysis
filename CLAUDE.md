@@ -25,9 +25,12 @@ Before starting ANY task, respond with:
 
 ---
 
-## Project Status (as of 2026-04-28)
+## Project Status (as of 2026-04-30)
 
-### Maturity: 9.5 / 10 — Feature-complete, data integrity hardened, ops solid
+### Maturity: 9.7 / 10 — Feature-complete, data integrity hardened, ops solid, UI polished, public-release-safe
+
+### Mode: Long-term testing / observation
+No urgent code work remains. Do not restart feature expansion unless the operator explicitly requests it or selects a planned roadmap item. See `docs/dev/project-state-2026-04-30-public-release-prep.md` for the full handoff.
 
 ### Completed Phases
 - **Phase 1** — Core backend (accounts, trades, CSV import, analytics, PostgreSQL)
@@ -43,6 +46,7 @@ Before starting ANY task, respond with:
 - **Phase 11** — CI hardening: Postgres 15 CI job (migration + ORM smoke tests), Playwright E2E (8 tests, mocked API), `restore.ps1`/`restore.sh`
 - **Phase 12** — SL/TP enrichment, backfill, CSV enrich flow; reset-data guardrail; single-worker enforcement
 - **Phase 13** — Runtime state persistence (R5: FTMO dedup + scheduler cooldown), MT5 password presence badge (R6), SL/TP null-overwrite data integrity fix
+- **Phase 14** — R7 SL/TP backfill UX polish (error banner, helper text, success card); R9 UI polish slices (MT5 sync section reorder + status pill, Trade Log SL/TP visibility, Dashboard heading consistency, Import page heading consistency, Trade Log "Dir"→"Side"); public-release safety audit + `.gitignore` hardening
 
 ### Critical Data Integrity Invariant (Phase 13)
 `save_batch_import(duplicate_strategy="update_broker")` in `trade_repository.py` must never use
@@ -63,11 +67,14 @@ also adding them to `_SL_TP_PROTECTED_FIELDS` if they can be enriched independen
 - Backup scripts exist and are scheduled; off-host copy is operator discipline
 
 ### Next Direction
-Low urgency. All 6 manual validations (migration 011, SL/TP sync test, FTMO dedup restart, cooldown restart, password badge, CSV-enrich→sync→persist) were completed and passed by the operator on 2026-04-28. No urgent code work remains.
+**Project is in long-term testing / observation mode.** No urgent code work remains. R7 small-UX polish is complete; R9 UI polish slices completed include MT5 Sync, Trade Log, Dashboard, Import page, and Trade Log "Side" rename.
 
-Possible future candidates:
-- R7: SL/TP backfill async UX (only if operator finds long wait painful)
-- R8: Real-data Playwright E2E (only after a regression slips through mocked tests)
+Do not start a new feature unless the operator explicitly requests one or selects a planned roadmap item. See `docs/dev/project-state-2026-04-30-public-release-prep.md` for the full roadmap (Sections 9 and 12).
+
+Trigger-based future candidates (do not start without a trigger):
+- **R7 full async backfill job** — only if the synchronous backfill blocking wait becomes painful in real use
+- **R8 real-data Playwright E2E** — only if a regression slips through the current mocked tests
+- **Remaining R9 polish** (Plans list date, Daily/Coaching workflow, Dashboard refinement) — driven by daily-use friction reports
 
 ---
 
@@ -243,7 +250,7 @@ Next.js App Router (`frontend/app/`). Components in `frontend/components/`. Shar
 
 ### Telegram
 
-Push notifications: `services/telegram_notifier.py` — `TelegramNotifier` singleton. Methods: `notify_mt5_sync_result()`, `check_and_notify_ftmo()` (state-change dedup via in-memory `_last_ftmo_status` dict), `notify_coaching_generated()`. All fire-and-forget. Structured write-in: `api/routes/telegram.py` — webhook/command handler with chat_id guard.
+Push notifications: `services/telegram_notifier.py` — `TelegramNotifier` singleton. Methods: `notify_mt5_sync_result()`, `check_and_notify_ftmo()` (state-change dedup persisted via the `runtime_state` table — survives backend restarts; see R5 in Phase 13), `notify_coaching_generated()`. All fire-and-forget. Structured write-in: `api/routes/telegram.py` — webhook/command handler with chat_id guard.
 
 ### Setup Library
 

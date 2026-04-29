@@ -247,13 +247,13 @@ Invoke-WebRequest http://localhost:8000/ready | Select-Object -ExpandProperty Co
 
 4. **Enrich trades** — open any trade from the Trade Log, click Edit Journal, fill in setup type (dropdown from your Setup Library), mistake flags, execution quality, and reflection notes
 
-4. **Create trade plans** — go to Plans, create a pre-trade plan with thesis and R:R, then link it to the actual trade after execution
+5. **Create trade plans** — go to Plans, create a pre-trade plan with thesis and R:R, then link it to the actual trade after execution
 
-5. **Monitor the dashboard** — equity curve, drawdown, FTMO panel (daily loss / overall drawdown vs limits), plan adherence, R:R realization
+6. **Monitor the dashboard** — equity curve, drawdown, FTMO panel (daily loss / overall drawdown vs limits), plan adherence, R:R realization
 
-6. **Daily workflow** — use Daily Plans to write your pre-market plan each morning, post a Daily Review at end of session
+7. **Daily workflow** — use Daily Plans to write your pre-market plan each morning, post a Daily Review at end of session
 
-7. **Generate coaching** — go to AI Coach, select a date range, click Generate Review
+8. **Generate coaching** — go to AI Coach, select a date range, click Generate Review
 
 ---
 
@@ -438,12 +438,13 @@ Use this after changes or before a session to verify core flows.
 
 ## Future Roadmap
 
-See `RPD.md` for the full product roadmap.
+See `RPD.md` and `docs/dev/project-state-2026-04-30-public-release-prep.md` for the full product roadmap. The project is in long-term observation mode — items below are trigger-based, not scheduled.
 
-| Priority | Area |
-|---|---|
-| Later | Target-hit vs stop-hit decomposition |
-| Later | Entry quality vs exit quality decomposition |
-| Later | Screenshot / image attachment upload |
-| Later | AI provider abstraction (OpenAI / Gemini option) |
-| Later | Multi-user authentication |
+| Priority | Area | Trigger |
+|---|---|---|
+| Later | Screenshot / image attachment upload | When trade-context evidence becomes a workflow gap |
+| Later | AI provider abstraction (OpenAI / Gemini option) | Anthropic outage or pricing change |
+| Later | Multi-user authentication | Hosted-deployment requirement |
+| Later | MAE / MFE analytics | Operator wants entry-vs-exit decomposition with bar-data evidence |
+| Later | Open-trade awareness in coaching | Operator wants "what should I do with this open position" coaching |
+| Later | Async backfill job with progress endpoint | Synchronous backfill wait becomes painful at scale |
