@@ -148,6 +148,23 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function SyncStatusPill({ status }: { status: MT5SyncStatus }) {
+  const { state } = computeFreshness(status);
+  const cfg: Record<FreshnessState, { cls: string; label: string }> = {
+    fresh:   { cls: "bg-green-900/40 text-green-300 border-green-700/50",    label: "Fresh" },
+    stale:   { cls: "bg-yellow-900/40 text-yellow-300 border-yellow-700/50", label: "Stale" },
+    delayed: { cls: "bg-orange-900/40 text-orange-300 border-orange-700/50", label: "Delayed" },
+    error:   { cls: "bg-red-900/40 text-red-300 border-red-700/50",          label: "Sync error" },
+    no_sync: { cls: "bg-gray-800 text-gray-400 border-gray-700",             label: "No sync" },
+  };
+  const { cls, label } = cfg[state];
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded font-medium border ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MT5SyncPage() {
@@ -338,13 +355,192 @@ export default function MT5SyncPage() {
             Requires Windows with MetaTrader5 Python package installed.
           </p>
         </div>
-        <AccountSelector />
+        <div className="flex items-center gap-3">
+          {status?.sync_configured && <SyncStatusPill status={status} />}
+          <AccountSelector />
+        </div>
       </div>
 
-      {/* ── Section 1: Connection Config ─────────────────────────────────────── */}
+      {/* ── Section A: Data Freshness (shown first when sync is configured) ───── */}
+      {status?.sync_configured && (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Data Freshness</p>
+            <span
+              className={`text-xs px-2 py-0.5 rounded font-medium border ${
+                status.enabled
+                  ? "bg-green-900/40 text-green-300 border-green-700/50"
+                  : "bg-gray-800 text-gray-400 border-gray-700"
+              }`}
+            >
+              Polling {status.enabled ? "On" : "Off"}
+            </span>
+          </div>
+
+          <FreshnessBadge status={status} />
+
+          <div className="grid grid-cols-2 gap-4 text-sm pt-1">
+            <div>
+              <p className="text-xs text-gray-500">Last successful sync</p>
+              <p className="text-gray-200 mt-0.5 text-xs">
+                {status.last_sync_at
+                  ? `${fmtDateTime(status.last_sync_at)} (${fmtAgo(status.last_sync_at)})`
+                  : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">
+                {status.enabled ? "Next scheduled run" : "Interval (paused)"}
+              </p>
+              <p className="text-gray-200 mt-0.5 text-xs">
+                {status.enabled
+                  ? status.next_poll_at
+                    ? fmtDateTime(status.next_poll_at)
+                    : "Calculating…"
+                  : status.polling_interval_minutes != null
+                  ? `Every ${status.polling_interval_minutes} min (disabled)`
+                  : "—"}
+              </p>
+            </div>
+          </div>
+
+          {status.enabled && (
+            <p className="text-xs text-gray-600">
+              Background sync runs every {status.polling_interval_minutes ?? "?"} min. Manual syncs
+              share the same audit log below.
+              Fresh = within 1.5× interval (min 90 min). Stale = older. Delayed = next poll overdue.
+            </p>
+          )}
+          {!status.enabled && status.last_sync_at && (
+            <p className="text-xs text-gray-600">
+              Polling is disabled. Data was last updated {fmtAgo(status.last_sync_at)}. Enable polling
+              in the Configuration section below or run a manual sync to refresh.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ── Section B: Manual Sync Trigger ──────────────────────────────────── */}
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-4">
+        <p className="text-xs text-gray-500 uppercase tracking-wider">Manual Sync</p>
+
+        {status && !status.sync_configured && (
+          <p className="text-sm text-yellow-400">
+            Save an MT5 config in the Configuration section below before triggering a sync.
+          </p>
+        )}
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-xs text-gray-400">From date</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 text-gray-100 text-sm rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-gray-400">To date</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 text-gray-100 text-sm rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-600">
+          Sync fetches closed deals from MT5 for the selected date range and upserts them into
+          the trade log. Manual enrichment (notes, flags, setup type) is always preserved.
+        </p>
+
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleSync}
+            disabled={syncing || (status != null && !status.sync_configured)}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm px-5 py-2.5 rounded-md transition-colors font-medium"
+          >
+            {syncing ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Syncing…
+              </span>
+            ) : (
+              "Sync Now"
+            )}
+          </button>
+          {status?.last_sync_at && !syncing && (
+            <span className="text-xs text-gray-500">
+              Last synced: {fmtDateTime(status.last_sync_at)}
+            </span>
+          )}
+        </div>
+
+        {/* Sync error */}
+        {syncError && (
+          <div className="bg-red-900/30 border border-red-700 text-red-300 text-sm px-4 py-3 rounded-md">
+            {syncError}
+          </div>
+        )}
+
+        {/* Sync result */}
+        {syncResult && !syncError && (
+          <div
+            className={`border rounded-lg p-4 space-y-3 ${
+              syncResult.status === "success"
+                ? "bg-green-900/20 border-green-700"
+                : "bg-red-900/20 border-red-700"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <StatusBadge status={syncResult.status} />
+              <span className="text-sm text-gray-300">
+                {syncResult.status === "success"
+                  ? "Sync complete"
+                  : "Sync completed with error"}
+              </span>
+            </div>
+
+            {syncResult.status === "success" && (
+              <div className="grid grid-cols-5 gap-4">
+                <div className="text-center">
+                  <p className="text-2xl font-semibold text-green-400">{syncResult.trades_new}</p>
+                  <p className="text-xs text-gray-500 mt-1">New trades</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-semibold text-blue-400">{syncResult.trades_updated}</p>
+                  <p className="text-xs text-gray-500 mt-1">Updated</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-semibold text-gray-400">{syncResult.trades_skipped}</p>
+                  <p className="text-xs text-gray-500 mt-1">Skipped</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-semibold text-gray-300">{syncResult.deals_fetched}</p>
+                  <p className="text-xs text-gray-500 mt-1">Deals fetched</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-semibold text-yellow-400">{syncResult.open_positions_count}</p>
+                  <p className="text-xs text-gray-500 mt-1">Open now</p>
+                </div>
+              </div>
+            )}
+
+            {syncResult.error_message && (
+              <p className="text-xs text-red-300 font-mono break-words">
+                {syncResult.error_message}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Section C: Configuration (moved below daily actions) ─────────────── */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">Connection Config</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Configuration</p>
           {config && (
             <span className="text-xs text-gray-500">
               Last updated {fmtDateTime(config.updated_at)}
@@ -522,182 +718,6 @@ export default function MT5SyncPage() {
               </span>
             ) : config ? "Update Config" : "Save Config"}
           </button>
-        )}
-      </div>
-
-      {/* ── Section 1b: Background Polling Status ───────────────────────────── */}
-      {status?.sync_configured && (
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500 uppercase tracking-wider">Data Freshness</p>
-            <span
-              className={`text-xs px-2 py-0.5 rounded font-medium border ${
-                status.enabled
-                  ? "bg-green-900/40 text-green-300 border-green-700/50"
-                  : "bg-gray-800 text-gray-400 border-gray-700"
-              }`}
-            >
-              Polling {status.enabled ? "On" : "Off"}
-            </span>
-          </div>
-
-          <FreshnessBadge status={status} />
-
-          <div className="grid grid-cols-2 gap-4 text-sm pt-1">
-            <div>
-              <p className="text-xs text-gray-500">Last successful sync</p>
-              <p className="text-gray-200 mt-0.5 text-xs">
-                {status.last_sync_at
-                  ? `${fmtDateTime(status.last_sync_at)} (${fmtAgo(status.last_sync_at)})`
-                  : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">
-                {status.enabled ? "Next scheduled run" : "Interval (paused)"}
-              </p>
-              <p className="text-gray-200 mt-0.5 text-xs">
-                {status.enabled
-                  ? status.next_poll_at
-                    ? fmtDateTime(status.next_poll_at)
-                    : "Calculating…"
-                  : status.polling_interval_minutes != null
-                  ? `Every ${status.polling_interval_minutes} min (disabled)`
-                  : "—"}
-              </p>
-            </div>
-          </div>
-
-          {status.enabled && (
-            <p className="text-xs text-gray-600">
-              Background sync runs every {status.polling_interval_minutes ?? "?"} min. Manual syncs
-              share the same audit log below.
-              Fresh = within 1.5× interval (min 90 min). Stale = older. Delayed = next poll overdue.
-            </p>
-          )}
-          {!status.enabled && status.last_sync_at && (
-            <p className="text-xs text-gray-600">
-              Polling is disabled. Data was last updated {fmtAgo(status.last_sync_at)}. Enable polling
-              above or run a manual sync to refresh.
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* ── Section 2: Manual Sync Trigger ──────────────────────────────────── */}
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-4">
-        <p className="text-xs text-gray-500 uppercase tracking-wider">Manual Sync</p>
-
-        {status && !status.sync_configured && (
-          <p className="text-sm text-yellow-400">
-            Save an MT5 config above before triggering a sync.
-          </p>
-        )}
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-xs text-gray-400">From date</label>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 text-gray-100 text-sm rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-gray-400">To date</label>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 text-gray-100 text-sm rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-
-        <p className="text-xs text-gray-600">
-          Sync fetches closed deals from MT5 for the selected date range and upserts them into
-          the trade log. Manual enrichment (notes, flags, setup type) is always preserved.
-        </p>
-
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleSync}
-            disabled={syncing || (status != null && !status.sync_configured)}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm px-5 py-2.5 rounded-md transition-colors font-medium"
-          >
-            {syncing ? (
-              <span className="flex items-center gap-2">
-                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Syncing…
-              </span>
-            ) : (
-              "Sync Now"
-            )}
-          </button>
-          {status?.last_sync_at && !syncing && (
-            <span className="text-xs text-gray-500">
-              Last synced: {fmtDateTime(status.last_sync_at)}
-            </span>
-          )}
-        </div>
-
-        {/* Sync error */}
-        {syncError && (
-          <div className="bg-red-900/30 border border-red-700 text-red-300 text-sm px-4 py-3 rounded-md">
-            {syncError}
-          </div>
-        )}
-
-        {/* Sync result */}
-        {syncResult && !syncError && (
-          <div
-            className={`border rounded-lg p-4 space-y-3 ${
-              syncResult.status === "success"
-                ? "bg-green-900/20 border-green-700"
-                : "bg-red-900/20 border-red-700"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <StatusBadge status={syncResult.status} />
-              <span className="text-sm text-gray-300">
-                {syncResult.status === "success"
-                  ? "Sync complete"
-                  : "Sync completed with error"}
-              </span>
-            </div>
-
-            {syncResult.status === "success" && (
-              <div className="grid grid-cols-5 gap-4">
-                <div className="text-center">
-                  <p className="text-2xl font-semibold text-green-400">{syncResult.trades_new}</p>
-                  <p className="text-xs text-gray-500 mt-1">New trades</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-semibold text-blue-400">{syncResult.trades_updated}</p>
-                  <p className="text-xs text-gray-500 mt-1">Updated</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-semibold text-gray-400">{syncResult.trades_skipped}</p>
-                  <p className="text-xs text-gray-500 mt-1">Skipped</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-semibold text-gray-300">{syncResult.deals_fetched}</p>
-                  <p className="text-xs text-gray-500 mt-1">Deals fetched</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-semibold text-yellow-400">{syncResult.open_positions_count}</p>
-                  <p className="text-xs text-gray-500 mt-1">Open now</p>
-                </div>
-              </div>
-            )}
-
-            {syncResult.error_message && (
-              <p className="text-xs text-red-300 font-mono break-words">
-                {syncResult.error_message}
-              </p>
-            )}
-          </div>
         )}
       </div>
 
