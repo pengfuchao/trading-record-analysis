@@ -429,7 +429,7 @@ export default function ImportPage() {
       {accountId && (
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-3">
           <div>
-            <p className="text-sm font-medium text-gray-200">Enrich SL / TP from CSV</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Enrich SL / TP from CSV</p>
             <p className="text-xs text-gray-500 mt-1 leading-relaxed">
               Upload an FTMO / MT5 / MT4 exported statement to fill missing stop_loss and
               take_profit for trades already in the log. R is recomputed automatically.
