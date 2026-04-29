@@ -153,7 +153,7 @@ export default function TradesPage() {
               <tr className="border-b border-gray-800 text-gray-500 text-xs uppercase tracking-wider">
                 <th className="text-left px-4 py-3">Date</th>
                 <th className="text-left px-4 py-3">Symbol</th>
-                <th className="text-left px-4 py-3">Dir</th>
+                <th className="text-left px-4 py-3">Side</th>
                 <th className="text-left px-4 py-3">Setup</th>
                 <th className="text-left px-4 py-3">Result</th>
                 <th className="text-right px-4 py-3">Net PnL</th>
