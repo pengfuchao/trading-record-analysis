@@ -1,6 +1,6 @@
 # Trading Record Analysis
 
-A professional trading journal and performance analytics system for discretionary traders. Built for FTMO/prop firm tracking, execution improvement, and behavioral analysis.
+A professional trading journal and performance analytics system for discretionary traders. Built for prop firm tracking, execution improvement, and behavioral analysis.
 
 ## What Is This?
 
