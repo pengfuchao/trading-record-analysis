@@ -9,7 +9,7 @@ A full-stack web app that gives you a structured way to:
 - Enrich each trade with setup tags, execution quality notes, and reflections
 - Compare pre-trade plans against actual execution (plan adherence, planned R:R vs realized R)
 - See account-level analytics: equity curve, drawdown, win rate, profit factor, Sharpe, Sortino
-- Monitor your FTMO challenge progress (daily loss limit, overall drawdown)
+- Monitor your prop firm challenge progress (daily loss limit, overall drawdown)
 - Create daily pre-market plans and post-market reviews
 - Generate AI-powered or rule-based weekly coaching summaries
 - Receive Telegram push alerts and log trades from your phone via commands
@@ -31,7 +31,7 @@ A full-stack web app that gives you a structured way to:
 | R:R realization trend over time — weekly bar chart on dashboard, coaching signals | Done |
 | Per-symbol / per-session analytics — ranked tables, best/worst callouts, coaching signals | Done |
 | Dashboard: equity curve, drawdown chart, core analytics | Done |
-| FTMO / prop firm status panel with live limit monitoring | Done |
+| prop firm status panel with live limit monitoring | Done |
 | Daily pre-market plans: create / edit / delete | Done |
 | Daily post-market reviews: create / edit / delete | Done |
 | Setup analytics: per-setup win rate, avg PnL, profit factor, ranking | Done |
@@ -241,7 +241,7 @@ Invoke-WebRequest http://localhost:8000/ready | Select-Object -ExpandProperty Co
 2. **Import trades** — go to Import, drop your MT4/MT5 CSV export, preview, confirm; optionally run Recompute R & Session afterward
 
 3. **If SL/TP shows blank in Trade Log** — two paths:
-   - *Have an FTMO / MT5 CSV export?* → Import page → **Enrich SL/TP from CSV** — no MT5 terminal needed, works offline, exact `trade_id` match
+   - *Have an prop firm / MT5 CSV export?* → Import page → **Enrich SL/TP from CSV** — no MT5 terminal needed, works offline, exact `trade_id` match
    - *No CSV, but MT5 terminal running (Windows)?* → MT5 Sync page → **Backfill SL/TP from MT5** — queries 2-year order history; may take several minutes; do not click twice
    Both paths are NULL-only fills — running one after the other is safe and idempotent.
 
@@ -321,7 +321,7 @@ These signals also flow into the AI coaching prompt and rule-based fallback.
 | Event | When |
 |---|---|
 | MT5 sync success/failure | After every manual or scheduled sync |
-| FTMO status change | When `account_status` transitions (SAFE → AT_RISK → BREACHED or back) |
+| Account status change | When `account_status` transitions (SAFE → AT_RISK → BREACHED or back) |
 | Coaching review generated | After a successful AI-generated review |
 
 ```bash
@@ -342,7 +342,7 @@ Supported commands (key:value format only — no natural-language parsing):
 
 **`/plan`** — create a trade plan  
 **`/journal`** — update trade enrichment (requires `trade_id` UUID)  
-**`/status`** — account + FTMO snapshot  
+**`/status`** — account + prop firm snapshot  
 **`/ping`** — liveness check
 
 The webhook rejects messages from any chat_id that doesn't match `TELEGRAM_CHAT_ID`.
@@ -358,7 +358,7 @@ The webhook rejects messages from any chat_id that doesn't match `TELEGRAM_CHAT_
 | MT5 sync is single-process | Overlap protection is in-memory only. Multi-process (Gunicorn multi-worker) deployments would lose this protection. Use `--workers 1`. |
 | Screenshot upload not implemented | `screenshot_examples` field exists in the schema but no image storage is wired up. |
 | Telegram NLP deferred | `/journal` requires exact trade UUID. No broker ticket lookup, no multi-step flows. |
-| FTMO alert dedup persists across restarts | State stored in `runtime_state` table (migration 011); restarts no longer re-fire stale alerts. |
+| Prop firm alert dedup persists across restarts | State stored in `runtime_state` table (migration 011); restarts no longer re-fire stale alerts. |
 | Setup Library not auto-populated | New setup names from imports don't create Library entries automatically. |
 | Coaching covers closed trades only | No open position awareness in coaching context. |
 
