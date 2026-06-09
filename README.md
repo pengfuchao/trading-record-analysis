@@ -62,6 +62,63 @@ A full-stack web app that gives you a structured way to:
 | AI | Anthropic Claude API (with rule-based fallback) |
 | Scheduling | APScheduler 3.10+ (MT5 background polling) |
 
+## Technical Architecture
+
+```mermaid
+flowchart LR
+    Trader["Trader / Operator"]
+    Browser["Browser"]
+    Frontend["Next.js Frontend<br/>App Router, TypeScript, Tailwind"]
+    API["FastAPI Backend<br/>REST API under /api/v1"]
+    Services["Domain Services<br/>imports, analytics, coaching, MT5 sync"]
+    DB["PostgreSQL<br/>journal data, plans, reviews, sync state"]
+    Alembic["Alembic<br/>schema migrations"]
+    Scheduler["APScheduler<br/>background MT5 polling"]
+    MT5["MetaTrader 5 Terminal<br/>Windows native backend only"]
+    Claude["Anthropic Claude API<br/>optional AI coaching"]
+    Telegram["Telegram Bot API<br/>optional alerts and write-ins"]
+    CSV["MT4 / MT5 CSV exports"]
+
+    Trader --> Browser
+    Browser --> Frontend
+    Frontend --> API
+    API --> Services
+    Services --> DB
+    Alembic --> DB
+    Scheduler --> Services
+    CSV --> Services
+    Services --> Claude
+    Services --> Telegram
+    Services --> MT5
+```
+
+## Product Workflow
+
+```mermaid
+flowchart TD
+    Account["Create or select trading account"]
+    Import["Import MT4/MT5 CSV<br/>or sync from MT5"]
+    Normalize["Normalize and deduplicate trades"]
+    Enrich["Enrich trade journal<br/>setup, mistakes, execution, reflection"]
+    Plan["Create pre-trade plans<br/>and daily plans"]
+    Link["Link executed trades to plans"]
+    Analyze["Analyze performance<br/>PnL, R, drawdown, FTMO limits"]
+    Coach["Generate coaching review<br/>AI or rule-based fallback"]
+    Notify["Receive Telegram alerts<br/>and status commands"]
+    Improve["Update process rules<br/>and refine execution"]
+
+    Account --> Import
+    Import --> Normalize
+    Normalize --> Enrich
+    Plan --> Link
+    Enrich --> Link
+    Link --> Analyze
+    Analyze --> Coach
+    Analyze --> Notify
+    Coach --> Improve
+    Improve --> Plan
+```
+
 ## Running Locally
 
 ### Prerequisites
